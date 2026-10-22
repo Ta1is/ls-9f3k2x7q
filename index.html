@@ -329,7 +329,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.022';
+const APP_VERSION = '0.023';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1679,19 +1679,9 @@ document.getElementById('genAllBtn').addEventListener('click',()=>{
 
 // ---------- Boot ----------
 function boot(){
-  if(state.players.length===0){
-    const seed = [['Veronica',7],['Renley',8],['Nora',20],['Harper',14],['Lydia',11],['Stella',27],['Paige',1],['GraceLynn',4],['Scarlett',21]];
-    seed.forEach(([n,num])=>{
-      const p = { id:state.nextPlayerId++, name:n, jersey:String(num), elig:{}, pref:{}, strong:{}, rating:{}, battingStrength:'average' };
-      ALLCATS.forEach(c=>{ p.elig[c] = ['1B','2B','3B','SS','OF','LF','LC','CF','RC','RF'].includes(c); p.pref[c]='neutral'; p.strong[c]=false; p.rating[c]='average'; });
-      state.players.push(p);
-    });
-    const [ver,ren,nor,har,lyd,stel,pai,gra,sca] = state.players;
-    pai.elig.C = true; pai.elig.OF=false; pai.elig['1B']=false; pai.elig['2B']=false; pai.elig['3B']=false; pai.elig.SS=false;
-    ['LF','LC','CF','RC','RF'].forEach(k=>pai.elig[k]=false);
-    [ren,nor,lyd,stel,gra].forEach(p=>p.elig.P=true);
-    stel.elig['1B']=false;
-  }
+  // Intentionally no seeded roster — a fresh profile starts completely empty. Add players from
+  // the Roster tab. (A real roster used to be hardcoded here for testing; removed so a new
+  // install, or a new season/team profile, never auto-fills with someone else's kids' names.)
   migrate();
   document.getElementById('teamName').value = state.teamName;
   renderProfileSelect(); renderRoster(); renderRules(); renderGamesList(); renderSeason(); renderScheduleRows();
