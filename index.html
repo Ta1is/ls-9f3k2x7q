@@ -1,0 +1,1718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c0512b">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  html,body{margin:0}
+  #gateScreen{display:none; min-height:100vh; align-items:center; justify-content:center; flex-direction:column;
+    gap:10px; padding:24px; text-align:center; font-family:system-ui,sans-serif; background:#f6f1e7; color:#20261f}
+</style>
+
+<script>
+// Link-gated access: rotate ACCESS_KEY below and redeploy to instantly invalidate every
+// previously shared link/device. A device that already opened a correct link remembers it
+// (stored locally, not on any server) and won't be asked again -- until you rotate this key.
+// This is a deterrent against a stray/forwarded link, not real security: the source of this
+// page is visible to anyone who loads it, same as any website.
+(function(){
+  "use strict";
+  var ACCESS_KEY = "pJ61JmbjeCQLqIpxsNHz9mxi";
+  function getParam(name){
+    var m = new RegExp('[?&#]'+name+'=([^&]+)').exec(window.location.href);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  var urlKey = getParam('key');
+  var storedKey = null;
+  try{ storedKey = localStorage.getItem('ls_access_key'); }catch(e){}
+  var ok = (urlKey === ACCESS_KEY) || (storedKey === ACCESS_KEY);
+  if(urlKey === ACCESS_KEY){
+    try{ localStorage.setItem('ls_access_key', ACCESS_KEY); }catch(e){}
+  }
+  if(!ok){
+    document.documentElement.setAttribute('data-gate','blocked');
+  }
+})();
+</script>
+</head>
+<body>
+<div id="gateScreen">
+  <div style="font-size:2rem">🔒</div>
+  <h2 style="margin:0">Access link required</h2>
+  <div style="opacity:.75; max-width:320px">This app only opens from the specific link your coach shared with you. Ask them to resend it.</div>
+</div>
+<div id="appRoot">
+<title>Lineup Studio</title>
+<style>
+/* Layout: single-column app shell — sticky tab bar, content card, print sheet hidden until Print view */
+:root{
+  --bg:#f6f1e7; --surface:#ffffff; --fg:#20261f; --muted:#6b6456;
+  --accent:#c0512b; --accent-ink:#ffffff; --line:#ded4bd; --good:#2f7a4f; --warn:#b8860b;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#181611; --surface:#211e18; --fg:#eee7d8; --muted:#a79d87;
+    --accent:#e0794a; --accent-ink:#1a1206; --line:#3a3528; --good:#5fb083; --warn:#dba93b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#181611; --surface:#211e18; --fg:#eee7d8; --muted:#a79d87;
+  --accent:#e0794a; --accent-ink:#1a1206; --line:#3a3528; --good:#5fb083; --warn:#dba93b;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg); font-family:'Public Sans',system-ui,sans-serif;
+  padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px));
+  padding-block:16px 48px; max-width:1040px; margin:0 auto;
+}
+h1,h2,h3{font-family:'Oswald',system-ui,sans-serif; text-transform:uppercase; letter-spacing:.02em; text-wrap:balance; margin:0}
+h1{font-size:1.5rem; color:var(--accent)}
+h2{font-size:1.05rem; margin-bottom:10px}
+h3{font-size:.92rem}
+.tag{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums}
+.sub{color:var(--muted); font-size:.85rem; margin-top:2px}
+header.app{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; padding-bottom:12px; border-bottom:2px solid var(--accent)}
+nav.tabs{display:flex; gap:6px; margin:16px 0; flex-wrap:wrap}
+nav.tabs button{
+  font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:.78rem; letter-spacing:.03em;
+  background:none; border:1px solid var(--line); color:var(--muted); padding:8px 14px; border-radius:6px; cursor:pointer;
+}
+nav.tabs button.active{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:16px}
+.view{display:none} .view.active{display:block}
+table{width:100%; border-collapse:collapse; font-size:.88rem}
+th,td{border-bottom:1px solid var(--line); padding:6px 8px; text-align:left; min-width:0}
+th{color:var(--muted); font-weight:600; font-size:.73rem; text-transform:uppercase; letter-spacing:.03em}
+.tablewrap{overflow-x:auto}
+input[type=text],input[type=number],input[type=date],select{
+  background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-family:inherit; font-size:.88rem;
+}
+button.btn{
+  font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:.78rem; letter-spacing:.03em;
+  background:var(--accent); color:var(--accent-ink); border:none; padding:8px 14px; border-radius:6px; cursor:pointer;
+}
+button.btn.ghost{background:none; border:1px solid var(--line); color:var(--fg)}
+button.btn.small{padding:4px 9px; font-size:.7rem}
+button.btn:disabled{opacity:.4; cursor:not-allowed}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.chip{display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:.78rem; cursor:pointer; user-select:none}
+.chip input{accent-color:var(--accent)}
+.pref{font-family:'JetBrains Mono',monospace; font-size:.7rem; border:1px solid var(--line); border-radius:4px; padding:3px 7px; cursor:pointer; background:var(--bg); min-width:62px; text-align:center}
+.pref.preferred{color:var(--good); border-color:var(--good)}
+.pref.avoid{color:var(--warn); border-color:var(--warn)}
+.pref.never{color:var(--muted); border-style:dashed}
+.rating{font-family:'JetBrains Mono',monospace; font-size:.68rem; border:1px solid var(--line); border-radius:4px; padding:3px 7px; cursor:pointer; background:var(--bg); min-width:54px; text-align:center}
+.rating.strong{color:var(--good); border-color:var(--good)}
+.rating.weak{color:var(--warn); border-color:var(--warn)}
+.rating.selectedRating{outline:2px solid var(--accent); outline-offset:1px}
+.modalOverlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50}
+.modalOverlay[hidden]{display:none}
+.modalBox{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px; max-width:560px; width:100%; max-height:88vh; overflow-y:auto}
+.closeX{background:none; border:none; color:var(--muted); font-size:1.3rem; cursor:pointer; line-height:1; padding:2px 6px}
+.gridcell{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; font-size:.76rem; text-align:center; cursor:pointer; border-radius:4px; padding:5px 4px}
+.gridcell:hover{outline:2px solid var(--accent)}
+.posP{background:#e8d4cb} .posC{background:#d9dfe8} .posIF{background:#dde8d9} .posOF{background:#eee3c7} .posBN{background:none; color:var(--muted)}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .posP{background:#3c2c23} :root:not([data-theme="light"]) .posC{background:#222c38}
+  :root:not([data-theme="light"]) .posIF{background:#223422} :root:not([data-theme="light"]) .posOF{background:#3a3220}
+}
+:root[data-theme="dark"] .posP{background:#3c2c23} :root[data-theme="dark"] .posC{background:#222c38}
+:root[data-theme="dark"] .posIF{background:#223422} :root[data-theme="dark"] .posOF{background:#3a3220}
+.badge{font-size:.68rem; padding:2px 7px; border-radius:999px; font-family:'JetBrains Mono',monospace}
+.badge.draft{background:var(--warn); color:#1a1206} .badge.locked{background:var(--good); color:#06200f}
+.badge.cancelled{background:var(--muted); color:var(--surface)}
+.warnbox{border:1px solid var(--warn); background:color-mix(in srgb, var(--warn) 15%, var(--surface)); border-radius:8px; padding:10px 12px; font-size:.82rem; margin-bottom:12px}
+ol.battingorder{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px}
+ol.battingorder li{display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:.88rem; background:var(--surface)}
+ol.battingorder li .num{font-family:'JetBrains Mono',monospace; color:var(--muted); width:1.4em}
+ol.battingorder li.dragging{opacity:.4}
+.draghandle{cursor:grab; touch-action:none; padding:2px 8px; color:var(--muted); font-size:1rem; user-select:none}
+.iconbtn{background:none;border:1px solid var(--line);border-radius:4px;cursor:pointer;color:var(--fg);padding:2px 7px;font-size:.8rem}
+.jersey{font-family:'JetBrains Mono',monospace; color:var(--muted)}
+.groupRow{border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:8px 0}
+.appVersion{position:fixed; bottom:6px; right:10px; font-size:.68rem; color:var(--muted); opacity:.65; pointer-events:none; z-index:1}
+.strongbox{accent-color:var(--good)}
+@media print{
+  nav.tabs, header.app, #setupcard, #rulescard, #gamesListCard, #seasonTabBtn, .noprint{display:none !important}
+  body{max-width:none; padding:0}
+  .printsheet{display:block !important}
+}
+.printsheet{display:none}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+
+<header class="app">
+  <div>
+    <h1 id="teamTitle">Lineup Studio</h1>
+    <div class="sub">A configurable rotation engine — prototype, not the phone app yet.</div>
+  </div>
+  <div class="row">
+    <label class="sub">Season/Team <select id="profileSelect" style="margin-left:6px"></select></label>
+    <button class="btn ghost small" id="newProfileBtn">+ New season/team</button>
+    <button class="btn ghost small" id="deleteProfileBtn" style="color:var(--warn)">Delete this season/team</button>
+    <label class="sub">Team name <input type="text" id="teamName" style="margin-left:6px"></label>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-tab="roster" class="active">Roster</button>
+  <button data-tab="rules">Rules</button>
+  <button data-tab="games">Games</button>
+  <button id="seasonTabBtn" data-tab="season">Season</button>
+  <button data-tab="metrics">Metrics</button>
+</nav>
+
+<section class="view active" id="view-roster">
+  <div class="card" id="setupcard">
+    <h2>Roster &amp; eligible positions</h2>
+    <div class="sub" style="margin-bottom:10px">Jersey # is cosmetic only — it's just a label next to the name and never used by the engine. Check every spot a player can play. Outfield columns depend on the Outfield detail setting on the Rules tab.</div>
+    <div class="tablewrap">
+      <table id="rosterTable">
+        <thead><tr id="rosterHeadRow"></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="addPlayerBtn">+ Add player</button></div>
+  </div>
+</section>
+
+<section class="view" id="view-rules">
+  <div class="card" id="rulescard">
+    <h2>Rotation rules</h2>
+    <div class="row" style="gap:20px; margin-bottom:10px">
+      <label class="sub">Max innings at same infield spot/game <input type="number" id="repeatCap" min="1" max="7" style="width:4em; margin-left:6px"></label>
+      <label class="chip"><input type="checkbox" id="banOF">No outfield two innings in a row</label>
+      <label class="sub">Rotate fielding every <input type="number" id="blockSize" min="1" max="3" style="width:3.5em; margin:0 6px">inning(s)</label>
+    </div>
+    <div class="row" style="margin-bottom:16px">
+      <label class="sub">Outfield detail
+        <select id="ofDetail" style="margin-left:6px">
+          <option value="generic">Generic — one OF bucket</option>
+          <option value="specific">Specific — Left / Center / Right</option>
+        </select>
+      </label>
+      <span class="sub">Specific unlocks per-side eligibility (LF/LC vs RF/RC) plus the Wall, Line, and Keep-players-apart rules below.</span>
+    </div>
+
+    <div id="sideRulesBlock" style="display:none">
+      <h3 style="margin-bottom:6px">Wall — infield + outfield strength</h3>
+      <div class="sub" style="margin-bottom:8px">Checks each side of the field for a Strong-rated player: SS+3B on the infield left, 2B+1B on the infield right, and (when 4 outfielders are out there) LF+LC on the outfield left, RC+RF on the outfield right. With fewer than 4 outfielders it just checks whichever single OF slot exists on that side. Up to 4 walls total whenever the roster and ratings support it.</div>
+      <label class="chip" style="margin-bottom:14px"><input type="checkbox" id="wallSides">Enforce the wall</label>
+
+      <h3 style="margin-bottom:6px">Line — front-to-back pairs</h3>
+      <div class="sub" style="margin-bottom:8px">Checks the spot directly behind each infielder: SS/LC, 3B/LF, 2B/RC, 1B/RF (collapsing to whichever single outfield slot exists on a 2- or 3-outfielder game). Flags it when both players in a pair are rated Weak.</div>
+      <label class="chip" style="margin-bottom:14px"><input type="checkbox" id="lineWeak">Avoid two Weak fielders in the same line</label>
+
+      <h3 style="margin-bottom:6px">Keep players apart</h3>
+      <div class="sub" style="margin-bottom:8px">Separate from ratings — pick specific players who should never end up in one of those same front-to-back pairs together, no matter how they're rated.</div>
+      <label class="chip" style="margin-bottom:8px"><input type="checkbox" id="lineExclusionEnabled">Enable</label>
+      <div id="lineGroups"></div>
+      <button class="btn ghost small" id="addLineGroupBtn">+ Add group to keep apart</button>
+    </div>
+
+    <h2 style="margin-top:20px">Batting order</h2>
+    <div class="row" style="margin-bottom:8px">
+      <label class="sub">Default mode
+        <select id="battingMode" style="margin-left:6px">
+          <option value="fixed">Fixed — reuse last game's order automatically</option>
+          <option value="rotate">Rotate — shift last game's order by N spots</option>
+          <option value="fairness">Fairness — favors whoever's batted lower on average, with some randomness</option>
+          <option value="random">Random — fresh shuffle every time</option>
+          <option value="manual">Manual only — no auto-generation</option>
+        </select>
+      </label>
+      <label class="sub" id="battingShiftWrap">Shift by <input type="number" id="battingShift" min="1" max="8" style="width:3.2em; margin:0 4px">spot(s)</label>
+    </div>
+    <div class="sub" style="margin-bottom:10px">Fixed and Rotate apply automatically the moment a new game is created, carrying the previous game's order forward. Fairness and Random only run when you click "Generate order" on the Games tab, since they change things up on purpose. Every mode stays a starting point — drag to adjust after.</div>
+
+    <div class="row" style="margin-bottom:8px; align-items:center">
+      <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingStrengthEnabled">Keep Weak-rated batters spaced apart</label>
+      <label class="sub" id="battingGapWrap">by at least <input type="number" id="battingGap" min="1" max="8" style="width:3.2em; margin:0 4px">spot(s)</label>
+    </div>
+    <div class="sub" style="margin-bottom:10px">Applies whenever an order is generated (any mode above). 2 spots means two Weak batters can't bat back-to-back; higher numbers spread them further apart. Doesn't touch an order you've since dragged by hand.</div>
+
+    <div class="sub">Each player's eligible positions, fielding preference, fielding rating, and batting strength now live in their own popup — click Edit next to their name on the Roster tab.</div>
+  </div>
+</section>
+
+<section class="view" id="view-games">
+  <div class="card" id="gamesListCard">
+    <h2>Season schedule</h2>
+    <div id="gamesList" style="margin-bottom:12px"></div>
+    <div class="row" style="margin-bottom:16px">
+      <button class="btn" id="newGameBtn">+ Quick-add one game</button>
+      <button class="btn ghost" id="genAllBtn">Generate all draft games</button>
+    </div>
+    <h3 style="margin-bottom:8px">Build the schedule ahead of time</h3>
+    <div class="sub" style="margin-bottom:8px">Add every remaining game with its opponent and date, then Generate all draft games once — the engine plans fairness across the whole list, not just one game at a time.</div>
+    <div id="scheduleRows"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn ghost small" id="addScheduleRowBtn">+ Add row</button>
+      <button class="btn small" id="commitScheduleBtn">Add all to schedule</button>
+    </div>
+  </div>
+  <div class="card" id="gameDetailCard" style="display:none"></div>
+  <div class="printsheet" id="printSheet"></div>
+</section>
+
+<section class="view" id="view-season">
+  <div class="card">
+    <h2>Season record</h2>
+    <div id="seasonRecord" class="sub"></div>
+  </div>
+  <div class="card">
+    <h2>Season totals</h2>
+    <div class="sub" style="margin-bottom:10px">Only locked (played) games count here — drafts don't affect fairness math yet.</div>
+    <div class="tablewrap"><table id="seasonTable"><thead><tr id="seasonHeadRow"></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<section class="view" id="view-metrics">
+  <div class="card">
+    <h2>Playing-time fairness</h2>
+    <div class="sub" style="margin-bottom:10px">Total fielding innings per player across locked games — same numbers as Season totals, easier to scan for outliers.</div>
+    <div id="fairnessChart"></div>
+  </div>
+  <div class="card">
+    <h2>Batting fairness</h2>
+    <div class="sub" style="margin-bottom:10px">Times at bat, derived from the run board's "our batters per inning" row plus the batting order — no need to log individual names.</div>
+    <div id="battingFairnessChart"></div>
+  </div>
+  <div class="card">
+    <h2>Scoring by inning</h2>
+    <div class="sub" style="margin-bottom:10px">Runs scored across the season, inning by inning. Top bar is us, bottom bar is the opponent, both scaled the same way.</div>
+    <div class="row" style="gap:14px; margin-bottom:8px">
+      <span class="sub" style="display:flex; align-items:center; gap:5px"><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:var(--good)"></span>Us</span>
+      <span class="sub" style="display:flex; align-items:center; gap:5px"><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:var(--accent)"></span>Opponent</span>
+    </div>
+    <div id="inningScoringChart"></div>
+  </div>
+  <div class="card">
+    <h2>Attendance impact</h2>
+    <div class="sub" style="margin-bottom:10px">Record and run differential split by how many players showed up that game.</div>
+    <div id="attendanceChart"></div>
+  </div>
+  <div class="card">
+    <h2>Rule friction</h2>
+    <div class="sub" style="margin-bottom:10px">How often a locked game's final lineup still broke a soft rule because nothing cleaner was available. A lot of hits on one rule across the season is a sign it may be too strict for this roster size.</div>
+    <div id="frictionList"></div>
+  </div>
+  <div class="card">
+    <h2>Runs allowed by fielding assignment</h2>
+    <div class="sub" style="margin-bottom:10px">Links each inning's fielding grid to that inning's opponent runs from the run board, totaled by position and (when more than one player has played a spot) by player. Shows the top 3 positions with at least 2 innings of data, and within each, the top 3 players — anything thinner than that isn't a real sample and is left off. Read this as a pattern to watch, not a verdict — small sample sizes swing a lot, and runs in an inning depend on far more than one fielder.</div>
+    <div id="runsByPositionChart"></div>
+  </div>
+</section>
+
+<div class="modalOverlay" id="playerModal" hidden>
+  <div class="modalBox" id="playerModalBox"></div>
+</div>
+
+<div class="modalOverlay" id="profileModal" hidden>
+  <div class="modalBox" id="profileModalBox" style="max-width:420px"></div>
+</div>
+
+<div class="modalOverlay" id="confirmModal" hidden>
+  <div class="modalBox" id="confirmModalBox" style="max-width:420px"></div>
+</div>
+
+<div class="appVersion" id="appVersionBadge"></div>
+
+<script>
+(function(){
+"use strict";
+// Bump this one line each time this file is published — shown bottom-right as a quick "did my
+// last change actually land" check.
+const APP_VERSION = '0.022';
+const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
+// Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
+// by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
+const CATS_SPECIFIC = ['P','C','1B','2B','3B','SS','LF','LC','CF','RC','RF'];
+const ALLCATS = ['P','C','1B','2B','3B','SS','OF','LF','LC','CF','RC','RF'];
+const SPECIFIC_OF = new Set(['LF','LC','CF','RC','RF']);
+function isOFCat(cat){ return cat==='OF' || SPECIFIC_OF.has(cat); }
+// Wall = infield-only: left side SS+3B, right side 2B+1B — each side needs one Strong player.
+const LEFT_IF = ['SS','3B'];
+const RIGHT_IF = ['1B','2B'];
+// OF wall = the outfield half of the same idea: LF+LC on the left, RC+RF on the right. Only both
+// of a side's slots exist at once on a 4-outfielder alignment; with fewer outfielders it checks
+// whichever single slot on that side exists, same fallback as the infield wall.
+const LEFT_OF = ['LF','LC'];
+const RIGHT_OF = ['RC','RF'];
+// Line = front-to-back: the outfield slot directly behind each infielder. When both specific slots
+// exist (4-OF alignment) they're distinct (SS-LC, 3B-LF); when only one exists (2-OF or 3-OF),
+// both infielders share it, matching how the two sides collapse.
+const LINE_PAIRS = [['SS','LC','LF'],['3B','LF','LC'],['2B','RC','RF'],['1B','RF','RC']];
+const IF = new Set(['1B','2B','3B','SS']);
+const LS_KEY = 'lineupstudio_v2';
+function activeCats(){ return state.rules.ofDetail==='specific'? CATS_SPECIFIC : CATS_GENERIC; }
+function catLabel(c){ return c; }
+
+// A "profile" is one team/season's worth of data (roster, rules, games). appData holds every
+// profile the coach has created plus which one is active, so switching seasons or teams never
+// touches the others' history.
+function freshProfile(name){
+  return {
+    teamName: name || 'My Team',
+    players: [],
+    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2} },
+    games: [],
+    nextPlayerId:1, nextGameId:1
+  };
+}
+function loadAppData(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(parsed && parsed.profiles) return parsed;
+      if(parsed && parsed.players){ // pre-profiles save — wrap it as this coach's first profile
+        return { currentProfileId:'p1', profiles:{ p1: parsed } };
+      }
+    }
+  }catch(e){}
+  return { currentProfileId:'p1', profiles:{ p1: freshProfile('My Team') } };
+}
+let appData = loadAppData();
+let state = appData.profiles[appData.currentProfileId] || (appData.profiles[appData.currentProfileId]=freshProfile('My Team'));
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(appData)); }catch(e){} }
+function newProfileId(){ let i=1; while(appData.profiles['p'+i]) i++; return 'p'+i; }
+function createProfile(name, copyRoster){
+  const id = newProfileId();
+  const fresh = freshProfile(name);
+  if(copyRoster){
+    fresh.players = JSON.parse(JSON.stringify(state.players));
+    fresh.nextPlayerId = state.nextPlayerId;
+  }
+  appData.profiles[id] = fresh;
+  appData.currentProfileId = id;
+  state = fresh;
+  save(); migrate(); fullRerender();
+}
+function switchProfile(id){
+  if(!appData.profiles[id] || id===appData.currentProfileId) return;
+  appData.currentProfileId = id;
+  state = appData.profiles[id];
+  save(); migrate(); fullRerender();
+}
+function deleteProfile(id){
+  if(!appData.profiles[id]) return;
+  delete appData.profiles[id];
+  if(Object.keys(appData.profiles).length===0){
+    const freshId = newProfileId();
+    appData.profiles[freshId] = freshProfile('My Team');
+    appData.currentProfileId = freshId;
+  } else if(appData.currentProfileId===id){
+    appData.currentProfileId = Object.keys(appData.profiles)[0];
+  }
+  state = appData.profiles[appData.currentProfileId];
+  save(); migrate(); fullRerender();
+}
+function renderProfileSelect(){
+  const sel = document.getElementById('profileSelect'); if(!sel) return;
+  sel.innerHTML = Object.entries(appData.profiles).map(([id,prof])=>
+    `<option value="${id}" ${id===appData.currentProfileId?'selected':''}>${escapeAttr(prof.teamName||'Untitled')}</option>`).join('');
+}
+function fullRerender(){
+  currentGameId = null;
+  document.getElementById('gameDetailCard').style.display = 'none';
+  document.getElementById('teamName').value = state.teamName;
+  renderProfileSelect(); renderRoster(); renderRules(); renderGamesList(); renderSeason(); renderScheduleRows();
+}
+function openProfileModal(){
+  const box = document.getElementById('profileModalBox');
+  box.innerHTML = `
+    <div class="row" style="justify-content:space-between; margin-bottom:10px"><h2 style="margin:0">New season or team</h2><button class="closeX" id="profileModalClose">✕</button></div>
+    <label class="sub">Name<br><input type="text" id="newProfileName" style="width:100%; margin-top:4px" placeholder="e.g. Spring 2027 or Thunder 10U"></label>
+    <label class="chip" style="margin-top:12px"><input type="checkbox" id="newProfileCopyRoster" checked>Start from the current roster (same players, fresh game history)</label>
+    <div class="sub" style="margin-top:6px">Leave unchecked for a brand-new team with no players carried over. Either way, this doesn't touch "${escapeAttr(state.teamName)}" — that stays exactly as it is.</div>
+    <div class="row" style="margin-top:16px"><button class="btn" id="createProfileBtn">Create</button></div>
+  `;
+  document.getElementById('profileModalClose').addEventListener('click',()=>{ document.getElementById('profileModal').hidden=true; });
+  document.getElementById('createProfileBtn').addEventListener('click',()=>{
+    const name = document.getElementById('newProfileName').value.trim() || 'New team';
+    const copy = document.getElementById('newProfileCopyRoster').checked;
+    document.getElementById('profileModal').hidden = true;
+    createProfile(name, copy);
+  });
+  document.getElementById('profileModal').hidden = false;
+}
+// Generic confirm popup — the embedded app view silently no-ops window.confirm(), so anything
+// destructive (deleting a game) needs its own real UI instead.
+function openConfirm(message, onConfirm, yesLabel){
+  const box = document.getElementById('confirmModalBox');
+  box.innerHTML = `<div class="sub" style="font-size:.95rem; color:var(--fg); margin-bottom:16px">${escapeAttr(message)}</div>
+    <div class="row"><button class="btn" id="confirmYesBtn" style="background:var(--warn)">${escapeAttr(yesLabel||'Yes, delete')}</button>
+    <button class="btn ghost" id="confirmNoBtn">Cancel</button></div>`;
+  document.getElementById('confirmYesBtn').addEventListener('click',()=>{ document.getElementById('confirmModal').hidden=true; onConfirm(); });
+  document.getElementById('confirmNoBtn').addEventListener('click',()=>{ document.getElementById('confirmModal').hidden=true; });
+  document.getElementById('confirmModal').hidden = false;
+}
+function migrate(){
+  state.rules.ofDetail = state.rules.ofDetail || 'generic';
+  if(state.rules.wallSides===undefined) state.rules.wallSides = !!state.rules.wallPairs;
+  if(state.rules.lineWeak===undefined) state.rules.lineWeak = false;
+  state.rules.lineExclusion = state.rules.lineExclusion || {enabled:false, groups:[]};
+  if(state.rules.battingMode===undefined) state.rules.battingMode = 'fixed';
+  if(state.rules.battingShift===undefined) state.rules.battingShift = 1;
+  if(!state.rules.battingStrength) state.rules.battingStrength = {enabled:true, gap:2};
+  if(state.rules.battingStrength.enabled===undefined) state.rules.battingStrength.enabled = true;
+  if(state.rules.battingStrength.gap===undefined) state.rules.battingStrength.gap = 2;
+  state.players.forEach(p=>{
+    if(!p.strong) p.strong={};
+    // Carry forward the old 3-bucket specific setup (OF-L/OF-C/OF-R) into the new 5-slot one.
+    const carry = [['LF','OF-L'],['LC','OF-L'],['RF','OF-R'],['RC','OF-R'],['CF','OF-C']];
+    carry.forEach(([to,from])=>{
+      if(p.elig[to]===undefined && p.elig[from]!==undefined) p.elig[to]=p.elig[from];
+      if(p.pref[to]===undefined && p.pref[from]!==undefined) p.pref[to]=p.pref[from];
+      if(p.strong[to]===undefined && p.strong[from]!==undefined) p.strong[to]=p.strong[from];
+    });
+    ALLCATS.forEach(c=>{
+      if(p.elig[c]===undefined) p.elig[c]=false;
+      if(p.pref[c]===undefined) p.pref[c]='neutral';
+      if(p.strong[c]===undefined) p.strong[c]=false;
+    });
+    // Old single Strong checkbox -> three-state rating (weak/average/strong). A plain Weak flag
+    // didn't exist before, so everyone starts at Average except what was already checked Strong.
+    if(!p.rating) p.rating={};
+    ALLCATS.forEach(c=>{ if(p.rating[c]===undefined) p.rating[c] = p.strong[c] ? 'strong' : 'average'; });
+    if(p.jersey===undefined) p.jersey='';
+    if(p.battingStrength===undefined) p.battingStrength='average';
+  });
+  state.games.forEach(g=>{
+    if(g.plannedInnings===undefined) g.plannedInnings=g.innings;
+    if(g.shortened===undefined) g.shortened=false;
+    if(g.cancelled===undefined) g.cancelled=false;
+    if(g.ourScore===undefined) g.ourScore=null;
+    if(g.oppScore===undefined) g.oppScore=null;
+    if(g.result===undefined) g.result=null;
+    if(!g.runsByInning) g.runsByInning = {us:[], opp:[]};
+    if(!g.runsByInning.us) g.runsByInning.us = [];
+    if(!g.runsByInning.opp) g.runsByInning.opp = [];
+    if(!g.battersByInning) g.battersByInning = [];
+  });
+}
+
+function ofLabels(n){
+  if(n<=0) return [];
+  if(n===1) return ['OF'];
+  if(n===2) return ['LC','RC'];
+  if(n===3) return ['LF','CF','RF'];
+  if(n===4) return ['LF','LC','RC','RF'];
+  return Array.from({length:n},(_,i)=>'OF'+(i+1));
+}
+function posClass(code){
+  if(code==='P') return 'posP'; if(code==='C') return 'posC';
+  if(code==='BN') return 'posBN';
+  if(['1B','2B','3B','SS'].includes(code)) return 'posIF';
+  return 'posOF';
+}
+function catOf(code){
+  if(code==='BN') return null;
+  if(code==='P'||code==='C') return code;
+  if(IF.has(code)) return code;
+  if(state.rules.ofDetail==='specific'){
+    if(SPECIFIC_OF.has(code)) return code;
+    return 'CF'; // single-OF fallback (7 present) folds into Center
+  }
+  return 'OF';
+}
+function dispName(p){ return (p.jersey? '#'+p.jersey+' ' : '') + p.name; }
+
+// ---------- Roster ----------
+function addPlayer(){
+  const p = { id:state.nextPlayerId++, name:'Player '+(state.players.length+1), jersey:'', elig:{}, pref:{}, strong:{}, rating:{}, battingStrength:'average' };
+  ALLCATS.forEach(c=>{ p.elig[c] = ['1B','2B','3B','SS','OF','LF','LC','CF','RC','RF'].includes(c); p.pref[c]='neutral'; p.strong[c]=false; p.rating[c]='average'; });
+  state.players.push(p); save(); renderRoster(); renderRules();
+}
+function renderRoster(){
+  const head = document.getElementById('rosterHeadRow');
+  head.innerHTML = `<th>Jersey #</th><th>Name</th><th>Batting</th><th>Fielding</th><th></th>`;
+  const tb = document.querySelector('#rosterTable tbody'); tb.innerHTML='';
+  state.players.forEach(p=>{
+    const tr = document.createElement('tr');
+    const eligCount = activeCats().filter(c=>p.elig[c]).length;
+    tr.innerHTML = `<td><input type="text" value="${escapeAttr(p.jersey)}" data-pid="${p.id}" class="jerseyInput" style="width:3.6em" placeholder="#"></td>
+      <td><input type="text" value="${escapeAttr(p.name)}" data-pid="${p.id}" class="nameInput" style="width:9em"></td>
+      <td class="sub" style="text-transform:capitalize">${p.battingStrength||'average'}</td>
+      <td class="sub">${eligCount} spot${eligCount===1?'':'s'}</td>
+      <td><button class="btn ghost small" data-pid="${p.id}" data-act="edit">Edit</button>
+        <button class="iconbtn" data-pid="${p.id}" data-act="remove">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('.jerseyInput').forEach(el=>el.addEventListener('input',e=>{
+    const p = getPlayer(+e.target.dataset.pid); p.jersey=e.target.value; save();
+  }));
+  tb.querySelectorAll('.nameInput').forEach(el=>el.addEventListener('input',e=>{
+    const p = getPlayer(+e.target.dataset.pid); p.name=e.target.value; save();
+  }));
+  tb.querySelectorAll('[data-act=edit]').forEach(el=>el.addEventListener('click',e=>{
+    openPlayerModal(+e.target.dataset.pid);
+  }));
+  tb.querySelectorAll('[data-act=remove]').forEach(el=>el.addEventListener('click',e=>{
+    const pid=+e.target.dataset.pid;
+    state.players = state.players.filter(p=>p.id!==pid); save(); renderRoster(); renderRules();
+  }));
+}
+function getPlayer(id){ return state.players.find(p=>p.id===id); }
+function escapeAttr(s){ return (s==null?'':String(s)).replace(/"/g,'&quot;'); }
+
+// ---------- Per-player popup: eligibility, fielding pref/rating, batting strength ----------
+function openPlayerModal(pid){
+  renderPlayerModalContent(pid);
+  document.getElementById('playerModal').hidden = false;
+}
+function closePlayerModal(){
+  document.getElementById('playerModal').hidden = true;
+  renderRoster(); renderRules();
+}
+function renderPlayerModalContent(pid){
+  const p = getPlayer(pid); if(!p) return;
+  const cats = activeCats();
+  const box = document.getElementById('playerModalBox');
+  box.innerHTML = `
+    <div class="row" style="justify-content:space-between; align-items:flex-start; margin-bottom:10px">
+      <h2 style="margin:0">${escapeAttr(dispName(p))}</h2>
+      <button class="closeX" id="modalCloseBtn">✕</button>
+    </div>
+    <div class="row" style="margin-bottom:16px">
+      <label class="sub">Jersey # <input type="text" id="modalJersey" value="${escapeAttr(p.jersey)}" style="width:3.6em"></label>
+      <label class="sub">Name <input type="text" id="modalName" value="${escapeAttr(p.name)}" style="width:10em"></label>
+    </div>
+    <h3 style="margin-bottom:6px">Batting strength</h3>
+    <div class="sub" style="margin-bottom:6px">Used to keep two Weak batters from landing back-to-back in the order.</div>
+    <div class="row" style="margin-bottom:18px; flex-wrap:nowrap">
+      ${['weak','average','strong'].map(v=>`<button class="rating ${v==='strong'?'strong':v==='weak'?'weak':''} ${p.battingStrength===v?'selectedRating':''}" data-battingval="${v}" style="flex:1; text-transform:capitalize">${v}</button>`).join('')}
+    </div>
+    <h3 style="margin-bottom:6px">Fielding</h3>
+    <div class="sub" style="margin-bottom:8px">Uncheck a spot this player will never play. Click the preference word to cycle Neutral → Preferred → Avoid. Click the rating to cycle Average → Strong → Weak.</div>
+    <div class="tablewrap"><table><tbody>
+      ${cats.map(c=>`<tr>
+        <td style="width:2.2em"><input type="checkbox" class="modalElig" data-cat="${c}" ${p.elig[c]?'checked':''}></td>
+        <td>${c}</td>
+        <td>${p.elig[c]? `<button class="pref ${p.pref[c]==='preferred'?'preferred':p.pref[c]==='avoid'?'avoid':''}" data-cat="${c}" data-kind="pref">${p.pref[c]}</button>` : `<span class="pref never">never</span>`}</td>
+        <td>${p.elig[c]? `<button class="rating ${p.rating[c]==='strong'?'strong':p.rating[c]==='weak'?'weak':''}" data-cat="${c}" data-kind="rating">${p.rating[c]}</button>` : ''}</td>
+      </tr>`).join('')}
+    </tbody></table></div>
+    <div class="row" style="margin-top:16px"><button class="btn" id="modalDoneBtn">Done</button></div>
+  `;
+  document.getElementById('modalCloseBtn').addEventListener('click', closePlayerModal);
+  document.getElementById('modalDoneBtn').addEventListener('click', closePlayerModal);
+  document.getElementById('modalJersey').addEventListener('input', e=>{ p.jersey=e.target.value; save(); });
+  document.getElementById('modalName').addEventListener('input', e=>{ p.name=e.target.value; save(); });
+  box.querySelectorAll('[data-battingval]').forEach(btn=>btn.addEventListener('click', ()=>{
+    p.battingStrength = btn.dataset.battingval; save(); renderPlayerModalContent(pid);
+  }));
+  box.querySelectorAll('.modalElig').forEach(chk=>chk.addEventListener('change', e=>{
+    p.elig[e.target.dataset.cat] = e.target.checked; save(); renderPlayerModalContent(pid);
+  }));
+  box.querySelectorAll('button[data-kind=pref]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const cat = btn.dataset.cat; p.pref[cat] = cyclePref(p.pref[cat]);
+    p.rating[cat] = p.pref[cat]==='preferred' ? 'strong' : p.pref[cat]==='avoid' ? 'weak' : 'average';
+    save(); renderPlayerModalContent(pid);
+  }));
+  box.querySelectorAll('button[data-kind=rating]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const cat = btn.dataset.cat; p.rating[cat] = cycleRating(p.rating[cat]); save(); renderPlayerModalContent(pid);
+  }));
+}
+
+// ---------- Rules / preferences ----------
+function cyclePref(cur){ return cur==='neutral'?'preferred':cur==='preferred'?'avoid':'neutral'; }
+function cycleRating(cur){ return cur==='average'?'strong':cur==='strong'?'weak':'average'; }
+function renderRules(){
+  document.getElementById('repeatCap').value = state.rules.repeatCap;
+  document.getElementById('banOF').checked = state.rules.banOF;
+  document.getElementById('blockSize').value = state.rules.blockSize;
+  document.getElementById('ofDetail').value = state.rules.ofDetail;
+  document.getElementById('wallSides').checked = state.rules.wallSides;
+  document.getElementById('lineWeak').checked = state.rules.lineWeak;
+  document.getElementById('lineExclusionEnabled').checked = state.rules.lineExclusion.enabled;
+  document.getElementById('sideRulesBlock').style.display = state.rules.ofDetail==='specific' ? 'block' : 'none';
+  document.getElementById('battingMode').value = state.rules.battingMode;
+  document.getElementById('battingShift').value = state.rules.battingShift;
+  document.getElementById('battingShiftWrap').style.display = state.rules.battingMode==='rotate' ? 'inline-flex' : 'none';
+  document.getElementById('battingStrengthEnabled').checked = state.rules.battingStrength.enabled;
+  document.getElementById('battingGap').value = state.rules.battingStrength.gap;
+  document.getElementById('battingGapWrap').style.display = state.rules.battingStrength.enabled ? 'inline-flex' : 'none';
+
+  renderLineGroups();
+}
+document.getElementById('repeatCap').addEventListener('input',e=>{state.rules.repeatCap=+e.target.value||2; save();});
+document.getElementById('banOF').addEventListener('change',e=>{state.rules.banOF=e.target.checked; save();});
+document.getElementById('blockSize').addEventListener('input',e=>{state.rules.blockSize=+e.target.value||1; save();});
+document.getElementById('ofDetail').addEventListener('change',e=>{
+  state.rules.ofDetail = e.target.value; save(); renderRoster(); renderRules(); renderSeason();
+});
+document.getElementById('wallSides').addEventListener('change',e=>{state.rules.wallSides=e.target.checked; save();});
+document.getElementById('lineWeak').addEventListener('change',e=>{state.rules.lineWeak=e.target.checked; save();});
+document.getElementById('lineExclusionEnabled').addEventListener('change',e=>{state.rules.lineExclusion.enabled=e.target.checked; save();});
+document.getElementById('battingMode').addEventListener('change',e=>{state.rules.battingMode=e.target.value; save(); renderRules();});
+document.getElementById('battingShift').addEventListener('input',e=>{state.rules.battingShift=Math.max(1,+e.target.value||1); save();});
+document.getElementById('battingStrengthEnabled').addEventListener('change',e=>{state.rules.battingStrength.enabled=e.target.checked; save(); renderRules();});
+document.getElementById('battingGap').addEventListener('input',e=>{state.rules.battingStrength.gap=Math.max(1,+e.target.value||2); save();});
+document.getElementById('addLineGroupBtn').addEventListener('click',()=>{
+  state.rules.lineExclusion.groups.push([]); save(); renderLineGroups();
+});
+function renderLineGroups(){
+  const el = document.getElementById('lineGroups'); el.innerHTML='';
+  state.rules.lineExclusion.groups.forEach((group,gi)=>{
+    const row = document.createElement('div'); row.className='groupRow';
+    row.innerHTML = `<div class="row" style="justify-content:space-between; margin-bottom:6px">
+        <b class="sub">Group ${gi+1} — never share a line pair</b>
+        <button class="iconbtn" data-gi="${gi}" data-act="removeGroup">✕</button>
+      </div>
+      <div class="row">${state.players.map(p=>`<label class="chip"><input type="checkbox" data-gi="${gi}" data-pid="${p.id}" class="groupBox" ${group.includes(p.id)?'checked':''}>${escapeAttr(dispName(p))}</label>`).join('')}</div>`;
+    el.appendChild(row);
+  });
+  el.querySelectorAll('[data-act=removeGroup]').forEach(b=>b.addEventListener('click',e=>{
+    state.rules.lineExclusion.groups.splice(+e.target.dataset.gi,1); save(); renderLineGroups();
+  }));
+  el.querySelectorAll('.groupBox').forEach(b=>b.addEventListener('change',e=>{
+    const gi=+e.target.dataset.gi, pid=+e.target.dataset.pid;
+    const group = state.rules.lineExclusion.groups[gi];
+    const idx = group.indexOf(pid);
+    if(e.target.checked){ if(idx===-1) group.push(pid); } else { if(idx!==-1) group.splice(idx,1); }
+    save();
+  }));
+}
+
+// ---------- Season totals (locked games only) ----------
+function foldGames(games){
+  const cats = activeCats();
+  const counts={}; state.players.forEach(p=>{ counts[p.id]={BN:0}; cats.forEach(c=>counts[p.id][c]=0); });
+  games.forEach(g=>{
+    Object.entries(g.grid).forEach(([pid,arr])=>{
+      pid=+pid; if(!counts[pid]) return;
+      arr.forEach(code=>{
+        if(code==='BN'){ counts[pid].BN++; return; }
+        const c = catOf(code); if(c && counts[pid][c]!==undefined) counts[pid][c]++;
+      });
+    });
+  });
+  return counts;
+}
+function seasonCounts(){ return foldGames(state.games.filter(g=>g.locked && !g.cancelled)); }
+// Fairness for a draft game also counts earlier draft games in the schedule (by date), so planning
+// several games ahead at once stays balanced — only the Season tab itself stays locked-games-only.
+// Cancelled games never count toward anything; they didn't happen.
+function countsThrough(target){
+  const sorted = state.games.slice().sort(cmpGames);
+  const included = sorted.filter(g=> g.id!==target.id && !g.cancelled && (g.locked || cmpGames(g,target)<=0));
+  return foldGames(included);
+}
+function renderSeason(){
+  const played = state.games.filter(g=>g.locked && !g.cancelled && g.result);
+  const w = played.filter(g=>g.result==='W').length, l = played.filter(g=>g.result==='L').length, t = played.filter(g=>g.result==='T').length;
+  const runsFor = played.reduce((s,g)=>s+(g.ourScore||0),0), runsAgainst = played.reduce((s,g)=>s+(g.oppScore||0),0);
+  const noScore = state.games.filter(g=>g.locked && !g.cancelled && !g.result).length;
+  document.getElementById('seasonRecord').innerHTML = played.length
+    ? `${w}-${l}${t?'-'+t:''} · runs ${runsFor}-${runsAgainst}` + (noScore? ` <span class="sub">(${noScore} completed game${noScore===1?'':'s'} with no score recorded)</span>`:'')
+    : 'No scores recorded yet — add one from a completed game.';
+
+  const cats = activeCats();
+  document.getElementById('seasonHeadRow').innerHTML = `<th>Player</th>${cats.map(c=>`<th>${c}</th>`).join('')}<th>Bench</th><th>Total</th>`;
+  const counts = seasonCounts();
+  const tb=document.querySelector('#seasonTable tbody'); tb.innerHTML='';
+  state.players.forEach(p=>{
+    const c=counts[p.id]; const total = cats.reduce((s,k)=>s+(c[k]||0),0);
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${escapeAttr(dispName(p))}</td>` + cats.map(k=>`<td class="tag">${c[k]||0}</td>`).join('') + `<td class="tag">${c.BN}</td><td class="tag"><b>${total}</b></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ---------- Games ----------
+function cmpGames(a,b){ if(a.date!==b.date) return a.date<b.date? -1:1; return a.id-b.id; }
+function recomputeScore(g){
+  const us = (g.runsByInning && g.runsByInning.us) || [];
+  const opp = (g.runsByInning && g.runsByInning.opp) || [];
+  const hasAny = us.some(x=>x!=null) || opp.some(x=>x!=null);
+  if(!hasAny){ g.ourScore=null; g.oppScore=null; g.result=null; return; }
+  const u = us.reduce((s,x)=>s+(x||0),0), o = opp.reduce((s,x)=>s+(x||0),0);
+  g.ourScore=u; g.oppScore=o; g.result = u>o?'W':u<o?'L':'T';
+}
+// Old-fashioned run board: runs per inning for both sides, plus how many of our batters came up
+// that inning. Combined with the batting order, that count alone is enough to know who batted —
+// no need to log every name, same shorthand a paper scorebook uses.
+function runBoardHTML(g, prefix){
+  const n = g.innings;
+  const us = (g.runsByInning && g.runsByInning.us) || [];
+  const opp = (g.runsByInning && g.runsByInning.opp) || [];
+  const bat = g.battersByInning || [];
+  function row(label, arr, cls){
+    return `<tr><td class="sub" style="white-space:nowrap">${label}</td>${Array.from({length:n},(_,i)=>
+      `<td><input type="number" min="0" class="${cls}" data-inn="${i}" value="${arr[i]!=null?arr[i]:''}" style="width:2.6em; text-align:center; padding:4px"></td>`).join('')}</tr>`;
+  }
+  return `<div class="tablewrap"><table style="font-size:.8rem">
+    <thead><tr><th></th>${Array.from({length:n},(_,i)=>`<th>${i+1}</th>`).join('')}</tr></thead>
+    <tbody>
+      ${row('Us', us, prefix+'UsInn')}
+      ${row('Opp', opp, prefix+'OppInn')}
+      ${row('Our batters', bat, prefix+'BatInn')}
+    </tbody>
+  </table></div>`;
+}
+function wireRunBoard(g, prefix){
+  const totalEl = document.getElementById(prefix+'Total');
+  function updateTotal(){
+    recomputeScore(g);
+    if(totalEl) totalEl.textContent = (g.ourScore!=null) ? `Total: Us ${g.ourScore} – Opp ${g.oppScore}` : '';
+  }
+  document.querySelectorAll('.'+prefix+'UsInn').forEach(inp=>inp.addEventListener('input',e=>{
+    const i=+e.target.dataset.inn; g.runsByInning.us[i] = e.target.value===''?null:Math.max(0,parseInt(e.target.value,10)||0);
+    save(); updateTotal();
+  }));
+  document.querySelectorAll('.'+prefix+'OppInn').forEach(inp=>inp.addEventListener('input',e=>{
+    const i=+e.target.dataset.inn; g.runsByInning.opp[i] = e.target.value===''?null:Math.max(0,parseInt(e.target.value,10)||0);
+    save(); updateTotal();
+  }));
+  document.querySelectorAll('.'+prefix+'BatInn').forEach(inp=>inp.addEventListener('input',e=>{
+    const i=+e.target.dataset.inn; g.battersByInning[i] = e.target.value===''?null:Math.max(0,parseInt(e.target.value,10)||0);
+    save();
+  }));
+  updateTotal();
+}
+// Walks the batting order using only the batters-per-inning counts (wrapping around the order the
+// way an actual scorebook does), so a season's worth of run boards gives real times-at-bat totals
+// without ever typing a player's name into the board itself.
+function computeBatterCounts(g){
+  const order = (g.order && g.order.length) ? g.order.filter(id=>g.present.includes(id)) : g.present;
+  const n = order.length;
+  const counts = {};
+  if(n===0) return counts;
+  let cursor = 0;
+  (g.battersByInning||[]).forEach(c=>{
+    const cnt = c||0;
+    for(let i=0;i<cnt;i++){ counts[order[cursor % n]] = (counts[order[cursor % n]]||0)+1; cursor++; }
+  });
+  return counts;
+}
+function seasonBatterCounts(){
+  const totals = {}; state.players.forEach(p=>totals[p.id]=0);
+  state.games.filter(g=>g.locked && !g.cancelled).forEach(g=>{
+    const c = computeBatterCounts(g);
+    Object.entries(c).forEach(([pid,v])=>{ totals[pid] = (totals[pid]||0)+v; });
+  });
+  return totals;
+}
+function reconcileOrder(order, present){
+  order = (order||[]).filter(id=>present.includes(id));
+  present.forEach(id=>{ if(!order.includes(id)) order.push(id); });
+  return order;
+}
+function getPreviousGame(g){
+  const sorted = state.games.slice().sort(cmpGames);
+  const idx = sorted.findIndex(x=>x.id===g.id);
+  return idx>0 ? sorted[idx-1] : null;
+}
+function battingSlotStats(){
+  const stats = {}; state.players.forEach(p=>stats[p.id]={sum:0,count:0});
+  state.games.filter(g=>g.locked && !g.cancelled).forEach(g=>{
+    (g.order||[]).forEach((pid,i)=>{ if(stats[pid]){ stats[pid].sum += (i+1); stats[pid].count++; } });
+  });
+  return stats;
+}
+// Modes: fixed/rotate carry the previous game's order forward (auto-applied at creation); fairness
+// leans toward whoever's batted lower on average so far, with light randomness mixed in so it isn't
+// the same predictable order every time; random ignores history entirely.
+// Spreads out Weak-rated batters so two of them don't land within `gap` spots of each other
+// (gap=2 means no back-to-back; higher spreads them further). Best-effort: if there aren't enough
+// non-Weak batters to separate everyone, it leaves what it can't fix alone rather than loop forever.
+// Only runs at all when the "Keep Weak-rated batters spaced apart" rule is enabled.
+function avoidAdjacentWeakBatters(order, gap){
+  gap = gap || 2;
+  const isWeak = pid=>{ const p=getPlayer(pid); return p && p.battingStrength==='weak'; };
+  const arr = order.slice();
+  for(let pass=0; pass<arr.length*2; pass++){
+    let clean = true;
+    for(let i=0;i<arr.length;i++){
+      for(let k=1;k<gap;k++){
+        const j = i+k; if(j>=arr.length) break;
+        if(isWeak(arr[i]) && isWeak(arr[j])){
+          let swapIdx = -1;
+          for(let m=j+1;m<arr.length;m++){ if(!isWeak(arr[m])){ swapIdx=m; break; } }
+          if(swapIdx===-1){ for(let m=i-1;m>=0;m--){ if(!isWeak(arr[m])){ swapIdx=m; break; } } }
+          if(swapIdx!==-1){ [arr[j],arr[swapIdx]] = [arr[swapIdx],arr[j]]; clean=false; }
+        }
+      }
+    }
+    if(clean) break;
+  }
+  return arr;
+}
+function computeBattingOrder(g, mode){
+  const present = g.present;
+  let result;
+  if(mode==='fixed' || mode==='rotate'){
+    const prev = getPreviousGame(g);
+    let base = reconcileOrder(prev && prev.order && prev.order.length ? prev.order.slice() : state.players.map(p=>p.id), present);
+    if(mode==='rotate'){
+      const shift = ((state.rules.battingShift||1) % base.length + base.length) % base.length;
+      base = base.slice(shift).concat(base.slice(0,shift));
+    }
+    result = base;
+  } else if(mode==='random'){
+    result = shuffle(present.slice());
+  } else if(mode==='fairness'){
+    const stats = battingSlotStats();
+    const scored = present.map(pid=>{
+      const s = stats[pid];
+      const avg = (s && s.count) ? s.sum/s.count : present.length; // never-batted = treated as most overdue
+      return {pid, score: avg + (Math.random()-0.5)*2.5};
+    });
+    scored.sort((a,b)=>b.score-a.score);
+    result = scored.map(x=>x.pid);
+  } else {
+    result = reconcileOrder(g.order, present);
+  }
+  if(state.rules.battingStrength && state.rules.battingStrength.enabled){
+    result = avoidAdjacentWeakBatters(result, state.rules.battingStrength.gap||2);
+  }
+  return result;
+}
+function battingModeLabel(mode){
+  return {fixed:'Fixed', rotate:'Rotate', fairness:'Fairness', random:'Random', manual:'Manual'}[mode] || mode;
+}
+function newGame(){
+  const g = { id: state.nextGameId++, opponent:'Opponent', date:new Date().toISOString().slice(0,10),
+    innings:6, plannedInnings:6, present: state.players.map(p=>p.id), grid:{}, order: state.players.map(p=>p.id),
+    locked:false, shortened:false, cancelled:false, ourScore:null, oppScore:null, result:null,
+    runsByInning:{us:[],opp:[]}, battersByInning:[], positions:[], benchIds:[] };
+  state.games.push(g);
+  if(state.rules.battingMode==='fixed' || state.rules.battingMode==='rotate') g.order = computeBattingOrder(g, state.rules.battingMode);
+  save(); renderGamesList(); selectGame(g.id);
+}
+let scheduleRows = [{opponent:'',date:'',innings:6}];
+function renderScheduleRows(){
+  const el = document.getElementById('scheduleRows'); if(!el) return; el.innerHTML='';
+  scheduleRows.forEach((r,i)=>{
+    const row=document.createElement('div'); row.className='row'; row.style.marginBottom='6px';
+    row.innerHTML = `<input type="text" placeholder="Opponent" value="${escapeAttr(r.opponent)}" data-i="${i}" data-f="opponent" style="width:9em">
+      <input type="date" value="${r.date}" data-i="${i}" data-f="date">
+      <label class="sub">Innings <input type="number" min="1" max="9" value="${r.innings}" data-i="${i}" data-f="innings" style="width:3.5em"></label>
+      <button class="iconbtn" data-i="${i}" data-act="removeRow">✕</button>`;
+    el.appendChild(row);
+  });
+  el.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',e=>{
+    const i=+e.target.dataset.i, f=e.target.dataset.f;
+    scheduleRows[i][f] = f==='innings'? (+e.target.value||6) : e.target.value;
+  }));
+  el.querySelectorAll('[data-act=removeRow]').forEach(b=>b.addEventListener('click',e=>{
+    scheduleRows.splice(+e.target.dataset.i,1); if(scheduleRows.length===0) scheduleRows=[{opponent:'',date:'',innings:6}]; renderScheduleRows();
+  }));
+}
+let currentGameId = null;
+function renderGamesList(){
+  const el = document.getElementById('gamesList'); el.innerHTML='';
+  if(state.games.length===0){ el.innerHTML = '<div class="sub">No games yet.</div>'; return; }
+  state.games.slice().sort(cmpGames).forEach(g=>{
+    const row=document.createElement('div'); row.className='row'; row.style.marginBottom='6px';
+    const statusClass = g.cancelled?'cancelled':g.locked?'locked':'draft';
+    const statusText = g.cancelled?'Cancelled':g.locked?'Complete':'Draft';
+    row.innerHTML = `<button class="btn ghost small" data-gid="${g.id}">${escapeAttr(g.opponent)} — ${g.date}</button>
+      <span class="badge ${statusClass}">${statusText}</span>
+      ${g.shortened? `<span class="badge" style="background:var(--warn); color:#1a1206">Ended early: ${g.innings}/${g.plannedInnings||g.innings}</span>`:''}
+      ${g.result? `<span class="badge" style="background:${g.result==='W'?'var(--good)':g.result==='L'?'var(--warn)':'var(--muted)'}; color:${g.result==='T'?'var(--surface)':'#06200f'}">${g.result} ${g.ourScore}-${g.oppScore}</span>`:''}`;
+    el.appendChild(row);
+  });
+  el.querySelectorAll('button').forEach(b=>b.addEventListener('click',e=>selectGame(+e.target.dataset.gid)));
+}
+function selectGame(id){
+  currentGameId = id;
+  const card = document.getElementById('gameDetailCard'); card.style.display='block';
+  renderGameDetail();
+}
+function getGame(id){ return state.games.find(g=>g.id===id); }
+
+function fieldPositionsFor(count){
+  const ofCount = Math.max(0, Math.min(4, count-6));
+  return ['P','C','1B','2B','3B','SS', ...ofLabels(ofCount)];
+}
+
+function renderGameDetail(){
+  const g = getGame(currentGameId); if(!g) return;
+  const card = document.getElementById('gameDetailCard');
+  const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
+  const positions = fieldPositionsFor(presentPlayers.length);
+  const benchCount = Math.max(0, presentPlayers.length - positions.length);
+  g.positions = positions;
+  const gridExists = Object.keys(g.grid).length>0;
+  const readOnly = g.locked || g.cancelled;
+  const statusClass = g.cancelled?'cancelled':g.locked?'locked':'draft';
+  const statusText = g.cancelled?'Cancelled':g.locked?'Complete':'Draft';
+
+  let html = `<div class="row" style="justify-content:space-between">
+    <h2>vs <input type="text" id="oppInput" value="${escapeAttr(g.opponent)}" style="width:10em" ${readOnly?'disabled':''}></h2>
+    <span class="badge ${statusClass}">${statusText}</span>
+    ${g.shortened? `<span class="badge" style="background:var(--warn); color:#1a1206">Ended early: ${g.innings}/${g.plannedInnings||g.innings}</span>`:''}
+  </div>
+  <div class="row" style="margin:8px 0 14px">
+    <label class="sub">Date <input type="date" id="dateInput" value="${g.date}" ${readOnly?'disabled':''}></label>
+    <label class="sub">Planned innings <input type="number" id="inningsInput" min="1" max="9" value="${g.innings}" style="width:3.5em" ${readOnly||gridExists?'disabled':''}></label>
+  </div>`;
+
+  if(!readOnly){
+    html += `<h3 style="margin-bottom:8px">Who's here today</h3><div class="row" id="presentChips" style="margin-bottom:14px">`;
+    state.players.forEach(p=>{
+      html += `<label class="chip"><input type="checkbox" data-pid="${p.id}" ${g.present.includes(p.id)?'checked':''}>${escapeAttr(dispName(p))}</label>`;
+    });
+    html += `</div>`;
+    const fieldingOk = gridExists && fieldingWorks(g);
+    const genLabel = !gridExists ? 'Generate fielding' : (fieldingOk ? 'Regenerate fielding (currently valid)' : 'Fix fielding (breaks a rule)');
+    html += `<div class="row" style="margin-bottom:14px"><button class="btn" id="genBtn">${genLabel}</button>
+      <span class="sub">${positions.length} field spots, ${benchCount} on bench this game (based on ${presentPlayers.length} present)</span></div>`;
+  }
+
+  if(Object.keys(g.grid).length){
+    html += `<h3 style="margin-bottom:8px">Fielding grid <span class="sub">(click a cell to swap)</span></h3>
+      <div class="tablewrap"><table id="gameGrid"><thead><tr><th>Player</th>${Array.from({length:g.innings},(_,i)=>`<th>Inn ${i+1}</th>`).join('')}</tr></thead><tbody></tbody></table></div>`;
+  }
+
+  html += `<h3 style="margin:16px 0 8px">Batting order</h3>`;
+  if(!readOnly && state.rules.battingMode!=='manual'){
+    html += `<div class="row" style="margin-bottom:8px"><button class="btn ghost small" id="genOrderBtn">Generate order (${battingModeLabel(state.rules.battingMode)})</button></div>`;
+  }
+  html += `<ol class="battingorder" id="battingOrder"></ol>`;
+
+  if(!readOnly && gridExists){
+    html += `<label class="sub">Innings completed <input type="number" id="inningsCompletedInput" min="1" max="${g.innings}" value="${g.innings}" style="width:3.5em"></label>
+    <h3 style="margin:10px 0 6px">Run board <span class="sub" style="text-transform:none; font-weight:400">(optional — fill in from the paper book)</span></h3>
+    ${runBoardHTML(g,'pre')}
+    <div class="sub" id="preTotal" style="margin:6px 0 10px"></div>`;
+  }
+  if(g.locked && !g.cancelled){
+    html += `<div class="row" style="margin-bottom:10px; align-items:center">
+      ${g.result? `<span class="badge" style="background:${g.result==='W'?'var(--good)':g.result==='L'?'var(--warn)':'var(--muted)'}; color:${g.result==='T'?'var(--surface)':'#06200f'}">${g.result} ${g.ourScore}-${g.oppScore}</span>` : `<span class="sub">No score recorded</span>`}
+      <button class="btn ghost small" id="editScoreBtn">${g.result?'Edit run board':'Add run board'}</button>
+    </div>
+    <div id="scoreEditRow" style="display:none; margin-bottom:10px">
+      ${runBoardHTML(g,'edit')}
+      <div class="row" style="margin-top:6px; align-items:center"><button class="btn small" id="saveScoreBtn">Save</button><span class="sub" id="editTotal"></span></div>
+    </div>`;
+  }
+
+  html += `<div class="row" style="margin-top:4px; align-items:center">`;
+  if(!readOnly){
+    if(gridExists) html += `<button class="btn" id="completeBtn">Game complete</button>`;
+    html += `<button class="btn ghost" id="cancelBtn">Game cancelled</button>`;
+  }
+  html += `<button class="btn ghost" id="printBtn">Open print view</button>
+    <button class="btn ghost" id="deleteGameBtn" style="color:var(--warn); border-color:var(--warn)">Delete game</button></div>`;
+
+  card.innerHTML = html;
+  wireGameDetail(g);
+  if(Object.keys(g.grid).length) renderGrid(g);
+  renderBattingOrder(g);
+}
+
+function wireGameDetail(g){
+  const oppEl = document.getElementById('oppInput'); if(oppEl) oppEl.addEventListener('input',e=>{g.opponent=e.target.value; save(); renderGamesList();});
+  const dateEl = document.getElementById('dateInput'); if(dateEl) dateEl.addEventListener('input',e=>{g.date=e.target.value; save(); renderGamesList();});
+  const innEl = document.getElementById('inningsInput'); if(innEl) innEl.addEventListener('input',e=>{const v=Math.max(1,+e.target.value||1); g.innings=v; g.plannedInnings=v; g.grid={}; save(); renderGameDetail();});
+  document.querySelectorAll('#presentChips input').forEach(el=>el.addEventListener('change',e=>{
+    const pid=+e.target.dataset.pid;
+    if(e.target.checked){ if(!g.present.includes(pid)) g.present.push(pid); }
+    else { g.present = g.present.filter(x=>x!==pid); }
+    g.grid={}; save(); renderGameDetail();
+  }));
+  const genBtn = document.getElementById('genBtn'); if(genBtn) genBtn.addEventListener('click',()=>{
+    const fieldingOk = Object.keys(g.grid).length>0 && fieldingWorks(g);
+    if(fieldingOk){
+      openConfirm('This lineup already satisfies every rule. Generate a new one anyway?', ()=>{ generateGame(g); save(); renderGameDetail(); }, 'Yes, regenerate');
+    } else {
+      regenerateIfBetter(g); save(); renderGameDetail();
+    }
+  });
+  const wgdReadOnly = g.locked || g.cancelled;
+  const wgdGridExists = Object.keys(g.grid).length>0;
+  if(!wgdReadOnly && wgdGridExists) wireRunBoard(g, 'pre');
+  const completeBtn = document.getElementById('completeBtn'); if(completeBtn) completeBtn.addEventListener('click',()=>{
+    const input = document.getElementById('inningsCompletedInput');
+    let n = parseInt(input.value,10); if(!n||n<1) n=1; if(n>g.innings) n=g.innings;
+    if(n<g.innings){
+      Object.keys(g.grid).forEach(pid=>{ g.grid[pid] = g.grid[pid].slice(0,n); });
+      g.runsByInning.us = g.runsByInning.us.slice(0,n);
+      g.runsByInning.opp = g.runsByInning.opp.slice(0,n);
+      g.battersByInning = g.battersByInning.slice(0,n);
+    }
+    g.innings = n;
+    g.shortened = n < (g.plannedInnings||n);
+    recomputeScore(g);
+    g.locked = true;
+    save(); renderGameDetail(); renderGamesList(); renderSeason();
+  });
+  const cancelBtn = document.getElementById('cancelBtn'); if(cancelBtn) cancelBtn.addEventListener('click',()=>{
+    g.cancelled = true; save(); renderGameDetail(); renderGamesList(); renderSeason();
+  });
+  const editScoreBtn = document.getElementById('editScoreBtn'); if(editScoreBtn) editScoreBtn.addEventListener('click',()=>{
+    const row = document.getElementById('scoreEditRow'); row.style.display = row.style.display==='none' ? 'block' : 'none';
+  });
+  if(g.locked && !g.cancelled) wireRunBoard(g, 'edit');
+  const saveScoreBtn = document.getElementById('saveScoreBtn'); if(saveScoreBtn) saveScoreBtn.addEventListener('click',()=>{
+    recomputeScore(g); save(); renderGameDetail(); renderGamesList(); renderSeason();
+  });
+  const genOrderBtn = document.getElementById('genOrderBtn'); if(genOrderBtn) genOrderBtn.addEventListener('click',()=>{
+    g.order = computeBattingOrder(g, state.rules.battingMode); save(); renderBattingOrder(g);
+  });
+  document.getElementById('printBtn').addEventListener('click',()=>{ buildPrintSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
+  document.getElementById('deleteGameBtn').addEventListener('click',()=>{
+    openConfirm(`Delete the game vs ${g.opponent} (${g.date}) permanently? This can't be undone.`, ()=>{
+      state.games = state.games.filter(x=>x.id!==g.id);
+      currentGameId = null;
+      document.getElementById('gameDetailCard').style.display = 'none';
+      save(); renderGamesList(); renderSeason();
+    });
+  });
+}
+
+// ---------- Solver: randomized greedy, best-of-N trials ----------
+function generateGame(g){
+  const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
+  const positions = fieldPositionsFor(presentPlayers.length);
+  const benchCount = Math.max(0, presentPlayers.length - positions.length);
+  const slotsPerInning = [...positions, ...Array.from({length:benchCount},()=>'BN')];
+  const season = countsThrough(g);
+  const grid = {}; presentPlayers.forEach(p=>grid[p.id]=[]);
+  const thisGameCount = {}; presentPlayers.forEach(p=>thisGameCount[p.id]={});
+  let lastOF = new Set();
+  const block = Math.max(1, state.rules.blockSize);
+  let blockAssignment = null;
+
+  for(let inn=0; inn<g.innings; inn++){
+    if(inn % block === 0){
+      blockAssignment = solveInning(presentPlayers, positions, slotsPerInning, thisGameCount, lastOF, season);
+    }
+    const assign = blockAssignment;
+    const curOF = new Set();
+    presentPlayers.forEach(p=>{
+      const pos = assign[p.id] || 'BN';
+      grid[p.id].push(pos);
+      if(pos!=='BN'){ thisGameCount[p.id][pos] = (thisGameCount[p.id][pos]||0)+1; }
+      const c = catOf(pos); if(c && isOFCat(c)) curOF.add(p.id);
+    });
+    lastOF = curOF;
+  }
+  g.grid = grid;
+}
+function sumViolations(counts){ return Object.values(counts).reduce((a,b)=>a+b,0); }
+// Regenerates, but only keeps the new grid if it's actually no worse than what was there — the
+// solver is random and soft rules (wall/line/preferences) aren't always fully satisfiable, so a
+// repeat click shouldn't keep reshuffling a lineup that's already as good as this can make it.
+// An empty starting grid always accepts the new one (nothing to protect yet).
+function regenerateIfBetter(g){
+  const hadGrid = Object.keys(g.grid).length>0;
+  const before = hadGrid ? sumViolations(countViolations(g)) : Infinity;
+  const beforeGrid = hadGrid ? JSON.parse(JSON.stringify(g.grid)) : null;
+  generateGame(g);
+  if(hadGrid){
+    const after = sumViolations(countViolations(g));
+    if(after >= before) g.grid = beforeGrid;
+  }
+}
+function solveInning(players, fieldSlots, slots, thisGameCount, lastOF, season){
+  let best=null, bestCost=Infinity;
+  for(let trial=0; trial<150; trial++){
+    const order = shuffle(slots.slice());
+    const avail = new Set(players.map(p=>p.id));
+    const assign = {}; let total=0; let feasible=true;
+    for(const slot of order){
+      let bestPid=null, bestC=Infinity;
+      for(const pid of avail){
+        const p = players.find(x=>x.id===pid);
+        const c = costOf(p, slot, thisGameCount, lastOF, season);
+        const jitter = Math.random()*2;
+        if(c + jitter < bestC){ bestC=c+jitter; bestPid=pid; }
+      }
+      if(bestPid===null){ feasible=false; break; }
+      assign[bestPid]=slot; avail.delete(bestPid);
+      if(bestC>=100000){ feasible=false; }
+      total += (bestC>=100000? 50: bestC);
+    }
+    if(feasible){ total += pairPenalties(assign, fieldSlots); }
+    if(feasible && total<bestCost){ bestCost=total; best=assign; }
+  }
+  if(!best){
+    const order = shuffle(slots.slice()); const avail = new Set(players.map(p=>p.id)); best={};
+    for(const slot of order){
+      let bestPid=null, bestC=Infinity;
+      for(const pid of avail){
+        const p = players.find(x=>x.id===pid);
+        const c = costOf(p, slot, thisGameCount, lastOF, season, true);
+        if(c<bestC){ bestC=c; bestPid=pid; }
+      }
+      if(bestPid!==null){ best[bestPid]=slot; avail.delete(bestPid); }
+    }
+  }
+  return best;
+}
+function costOf(p, slot, thisGameCount, lastOF, season, relax){
+  if(slot==='BN') return (season[p.id]?.BN||0)*3 + Math.random();
+  const cat = catOf(slot);
+  if(!p.elig[cat]) return relax? 500 : 1000000;
+  if(IF.has(slot) && (thisGameCount[p.id][slot]||0) >= state.rules.repeatCap) return relax? 300 : 1000000;
+  if(cat && isOFCat(cat) && state.rules.banOF && lastOF.has(p.id)) return relax? 300 : 1000000;
+  const prefBonus = p.pref[cat]==='preferred'? -6 : p.pref[cat]==='avoid'? 12 : 0;
+  const fairness = (season[p.id]?.[cat]||0) + (thisGameCount[p.id][slot]||0)*2;
+  return prefBonus + fairness;
+}
+function ratingOf(p, cat){ return (p && p.rating && p.rating[cat]) || 'average'; }
+function pairPenalties(assign, slotsThisInning){
+  if(state.rules.ofDetail!=='specific') return 0;
+  if(!state.rules.wallSides && !state.rules.lineWeak && !state.rules.lineExclusion.enabled) return 0;
+  let penalty = 0;
+  function pidAt(slot){ for(const [pid,s] of Object.entries(assign)) if(s===slot) return +pid; return null; }
+
+  // Wall: infield sides only (SS+3B left, 2B+1B right) — each side needs one Strong player.
+  if(state.rules.wallSides){
+    [LEFT_IF, RIGHT_IF].forEach(side=>{
+      const filled = side.map(pos=>({pos,pid:pidAt(pos)})).filter(x=>x.pid!=null);
+      if(filled.length===0) return;
+      const hasStrong = filled.some(({pos,pid})=>{
+        const p = state.players.find(x=>x.id===pid);
+        return ratingOf(p,pos)==='strong';
+      });
+      if(!hasStrong) penalty += 30;
+    });
+  }
+
+  // OF wall: same idea, LF+LC left / RC+RF right, under the same single toggle. Both slots on a
+  // side only exist together with 4 outfielders; with fewer, this just checks whichever single
+  // slot on that side is in play.
+  if(state.rules.wallSides){
+    [LEFT_OF, RIGHT_OF].forEach(side=>{
+      const filled = side.map(pos=>({pos,pid:pidAt(pos)})).filter(x=>x.pid!=null);
+      if(filled.length===0) return;
+      const hasStrong = filled.some(({pos,pid})=>{
+        const p = state.players.find(x=>x.id===pid);
+        return ratingOf(p,pos)==='strong';
+      });
+      if(!hasStrong) penalty += 30;
+    });
+  }
+
+  // Line: front-to-back infield/outfield pairs — flag two Weaks together, or named players together.
+  if(state.rules.lineWeak || state.rules.lineExclusion.enabled){
+    LINE_PAIRS.forEach(([posA, pref, fallback])=>{
+      const ofSlot = slotsThisInning.includes(pref) ? pref : (slotsThisInning.includes(fallback) ? fallback : null);
+      if(!ofSlot) return;
+      const pidA = pidAt(posA), pidB = pidAt(ofSlot);
+      if(pidA==null || pidB==null || pidA===pidB) return;
+      const pA = state.players.find(x=>x.id===pidA), pB = state.players.find(x=>x.id===pidB);
+      if(!pA || !pB) return;
+      if(state.rules.lineWeak){
+        if(ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') penalty += 40;
+      }
+      if(state.rules.lineExclusion.enabled){
+        (state.rules.lineExclusion.groups||[]).forEach(group=>{
+          if(group.includes(pidA) && group.includes(pidB)) penalty += 4000;
+        });
+      }
+    });
+  }
+  return penalty;
+}
+function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+// ---------- Grid rendering & manual swap ----------
+function renderGrid(g){
+  const tb = document.querySelector('#gameGrid tbody'); if(!tb) return; tb.innerHTML='';
+  state.players.filter(p=>g.present.includes(p.id)).forEach(p=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${escapeAttr(dispName(p))}</td>` + (g.grid[p.id]||[]).map((code,inn)=>
+      `<td class="gridcell ${posClass(code)}" data-pid="${p.id}" data-inn="${inn}">${code}</td>`).join('');
+    tb.appendChild(tr);
+  });
+  if(!(g.locked||g.cancelled)){
+    tb.querySelectorAll('.gridcell').forEach(el=>el.addEventListener('click',e=>{
+      swapCell(g, +e.target.dataset.pid, +e.target.dataset.inn, e.target);
+    }));
+  }
+}
+function swapCell(g, pid, inn, cellEl){
+  const players = state.players.filter(p=>g.present.includes(p.id));
+  const options = players.filter(p=>p.id!==pid);
+  const select = document.createElement('select');
+  select.style.fontSize = '.76rem';
+  select.innerHTML = `<option value="">Swap with…</option>` + options.map(p=>
+    `<option value="${p.id}">${escapeAttr(dispName(p))} (${g.grid[p.id][inn]})</option>`).join('');
+  select.addEventListener('click', e=>e.stopPropagation());
+  select.addEventListener('change', ()=>{
+    const otherId = +select.value;
+    if(otherId){
+      const tmp = g.grid[pid][inn]; g.grid[pid][inn]=g.grid[otherId][inn]; g.grid[otherId][inn]=tmp;
+      save(); renderSeason();
+    }
+    renderGrid(g);
+  });
+  select.addEventListener('blur', ()=>{ renderGrid(g); });
+  cellEl.innerHTML=''; cellEl.appendChild(select); select.focus();
+}
+
+// ---------- Batting order (drag to reorder — pointer events, so it works with touch too) ----------
+function renderBattingOrder(g){
+  const ol = document.getElementById('battingOrder'); if(!ol) return;
+  if(!g.order || g.order.length!==g.present.length) g.order = g.present.slice();
+  g.order = g.order.filter(id=>g.present.includes(id));
+  g.present.forEach(id=>{ if(!g.order.includes(id)) g.order.push(id); });
+  const readOnly = g.locked || g.cancelled;
+  ol.innerHTML='';
+  g.order.forEach((pid,i)=>{
+    const p = getPlayer(pid); if(!p) return;
+    const li = document.createElement('li');
+    li.dataset.pid = pid;
+    li.innerHTML = `<span class="num">${i+1}.</span><span style="flex:1">${escapeAttr(dispName(p))}</span>
+      ${!readOnly? `<span class="draghandle" title="Drag to reorder">⠿</span>`:''}`;
+    ol.appendChild(li);
+  });
+  if(!readOnly) wireBattingDrag(g, ol);
+}
+function wireBattingDrag(g, ol){
+  let draggingLi = null;
+  function afterElement(y){
+    const lis = Array.from(ol.querySelectorAll('li:not(.dragging)'));
+    for(const li of lis){
+      const r = li.getBoundingClientRect();
+      if(y < r.top + r.height/2) return li;
+    }
+    return null;
+  }
+  function endDrag(){
+    if(!draggingLi) return;
+    draggingLi.classList.remove('dragging');
+    g.order = Array.from(ol.children).map(li=>+li.dataset.pid);
+    draggingLi = null;
+    save(); renderBattingOrder(g);
+  }
+  ol.querySelectorAll('.draghandle').forEach(handle=>{
+    handle.addEventListener('pointerdown', e=>{
+      draggingLi = handle.closest('li');
+      draggingLi.classList.add('dragging');
+      try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+      e.preventDefault();
+    });
+  });
+  ol.addEventListener('pointermove', e=>{
+    if(!draggingLi) return;
+    const after = afterElement(e.clientY);
+    if(after===null) ol.appendChild(draggingLi);
+    else if(after!==draggingLi) ol.insertBefore(draggingLi, after);
+  });
+  ol.addEventListener('pointerup', endDrag);
+  ol.addEventListener('pointercancel', endDrag);
+}
+
+// ---------- Print sheet ----------
+function buildPrintSheet(g){
+  const sheet = document.getElementById('printSheet');
+  const rows = state.players.filter(p=>g.present.includes(p.id));
+  let html = `<div style="padding:24px; font-family:'Public Sans',sans-serif; color:#111">
+    <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px">${escapeAttr(state.teamName||'Team')} vs ${escapeAttr(g.opponent)}</h1>
+    <div style="margin-bottom:16px; color:#555">${g.date} — ${g.innings} innings</div>
+    <h2 style="font-family:'Oswald',sans-serif; font-size:1rem; margin:0 0 6px">Batting order</h2>
+    <ol style="margin:0 0 20px 1.2em; padding:0">${g.order.map(id=>{const p=getPlayer(id); return p? `<li>${escapeAttr(dispName(p))}</li>`:'';}).join('')}</ol>
+    <h2 style="font-family:'Oswald',sans-serif; font-size:1rem; margin:0 0 6px">Fielding, inning by inning</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:.85rem">
+      <thead><tr><th style="text-align:left; border-bottom:2px solid #111; padding:4px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border-bottom:2px solid #111; padding:4px">Inn ${i+1}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(p=>`<tr><td style="padding:4px; border-bottom:1px solid #ccc">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map(c=>`<td style="text-align:center; padding:4px; border-bottom:1px solid #ccc; font-family:monospace">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>
+    <div style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
+  </div>`;
+  sheet.innerHTML = html;
+  sheet.style.display='block';
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab==='season') renderSeason();
+    if(btn.dataset.tab==='metrics') renderMetrics();
+  });
+});
+
+document.getElementById('addPlayerBtn').addEventListener('click',addPlayer);
+document.getElementById('newGameBtn').addEventListener('click',newGame);
+document.getElementById('teamName').addEventListener('input',e=>{ state.teamName=e.target.value; save(); renderProfileSelect(); });
+document.getElementById('newProfileBtn').addEventListener('click', openProfileModal);
+document.getElementById('profileSelect').addEventListener('change', e=>{ switchProfile(e.target.value); });
+document.getElementById('deleteProfileBtn').addEventListener('click', ()=>{
+  openConfirm(`Delete "${state.teamName||'this team'}" completely? This removes its roster, rules, and every game in it. This cannot be undone.`, ()=>{
+    deleteProfile(appData.currentProfileId);
+  });
+});
+document.getElementById('addScheduleRowBtn').addEventListener('click',()=>{ scheduleRows.push({opponent:'',date:'',innings:6}); renderScheduleRows(); });
+document.getElementById('commitScheduleBtn').addEventListener('click',()=>{
+  scheduleRows.filter(r=>r.opponent.trim()||r.date).forEach(r=>{
+    const g = { id: state.nextGameId++, opponent:r.opponent.trim()||'Opponent', date:r.date||new Date().toISOString().slice(0,10),
+      innings:r.innings, plannedInnings:r.innings, present: state.players.map(p=>p.id), grid:{}, order: state.players.map(p=>p.id),
+      locked:false, shortened:false, cancelled:false, ourScore:null, oppScore:null, result:null,
+      runsByInning:{us:[],opp:[]}, battersByInning:[], positions:[], benchIds:[] };
+    state.games.push(g);
+    if(state.rules.battingMode==='fixed' || state.rules.battingMode==='rotate') g.order = computeBattingOrder(g, state.rules.battingMode);
+  });
+  scheduleRows = [{opponent:'',date:'',innings:6}];
+  save(); renderGamesList(); renderScheduleRows();
+});
+function countWeakBattingViolations(order, gap){
+  let c=0;
+  for(let i=0;i<order.length;i++){
+    for(let k=1;k<gap;k++){
+      const j=i+k; if(j>=order.length) break;
+      const a=getPlayer(order[i]), b=getPlayer(order[j]);
+      if(a && b && a.battingStrength==='weak' && b.battingStrength==='weak') c++;
+    }
+  }
+  return c;
+}
+// A batting order "works" if it still covers exactly who's present and the Weak-batter spacing
+// rule is satisfied — or, when the roster has too many Weak batters to satisfy it at all (e.g.
+// gap=2 needs at least as many non-Weak batters as Weak ones), it's at least as good as a fresh
+// pass would get it, so bulk-generate doesn't keep pointlessly reshuffling an order that's already
+// hit the ceiling. Either way, an accidental click never erases a lineup someone already set — it
+// only fills in or improves games that aren't already as good as this can make them.
+function battingOrderWorks(g){
+  if(!g.order || g.order.length!==g.present.length) return false;
+  const set = new Set(g.order);
+  if(!g.present.every(id=>set.has(id))) return false;
+  if(state.rules.battingStrength && state.rules.battingStrength.enabled){
+    const gap = state.rules.battingStrength.gap||2;
+    const current = countWeakBattingViolations(g.order, gap);
+    if(current===0) return true;
+    const retried = countWeakBattingViolations(avoidAdjacentWeakBatters(g.order, gap), gap);
+    return retried >= current;
+  }
+  return true;
+}
+// Re-checks an existing fielding grid against every currently-active rule (eligibility, repeat cap,
+// OF back-to-back, wall, line, keep-apart) plus whether it still matches today's headcount/slots.
+// Anything stale or violating gets regenerated; anything still good is left exactly as it is.
+// Same walk as fieldingWorks, but tallies every violation instead of stopping at the first one —
+// used by the Metrics tab's rule-friction log, not by the generator itself.
+function countViolations(g){
+  const counts = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0};
+  const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
+  if(presentPlayers.length===0 || Object.keys(g.grid).length!==presentPlayers.length) return counts;
+  const positions = fieldPositionsFor(presentPlayers.length);
+  const benchCount = Math.max(0, presentPlayers.length - positions.length);
+  const slots = [...positions, ...Array.from({length:benchCount},()=>'BN')];
+  const perGameCount = {}; presentPlayers.forEach(p=>perGameCount[p.id]={});
+  let lastOF = new Set();
+  for(let inn=0; inn<g.innings; inn++){
+    const assignBySlot = {};
+    for(const p of presentPlayers){
+      const pos = g.grid[p.id] ? g.grid[p.id][inn] : undefined;
+      if(pos==null || pos==='BN') continue;
+      assignBySlot[p.id] = pos;
+      const cat = catOf(pos);
+      if(!p.elig[cat]) counts.eligibility++;
+      if(IF.has(pos)){
+        perGameCount[p.id][pos] = (perGameCount[p.id][pos]||0)+1;
+        if(perGameCount[p.id][pos] > state.rules.repeatCap) counts.repeatCap++;
+      }
+      if(isOFCat(cat) && state.rules.banOF && lastOF.has(p.id)) counts.ofBackToBack++;
+    }
+    if(state.rules.ofDetail==='specific'){
+      for(const side of [LEFT_IF, RIGHT_IF]){
+        const filled = side.filter(pos=>Object.values(assignBySlot).includes(pos));
+        if(filled.length && state.rules.wallSides){
+          const hasStrong = filled.some(pos=>{
+            const pid = Object.keys(assignBySlot).find(k=>assignBySlot[k]===pos);
+            return pid && ratingOf(getPlayer(+pid), pos)==='strong';
+          });
+          if(!hasStrong) counts.wall++;
+        }
+      }
+      for(const side of [LEFT_OF, RIGHT_OF]){
+        const filled = side.filter(pos=>Object.values(assignBySlot).includes(pos));
+        if(filled.length && state.rules.wallSides){
+          const hasStrong = filled.some(pos=>{
+            const pid = Object.keys(assignBySlot).find(k=>assignBySlot[k]===pos);
+            return pid && ratingOf(getPlayer(+pid), pos)==='strong';
+          });
+          if(!hasStrong) counts.wallOF++;
+        }
+      }
+      for(const [posA, pref, fallback] of LINE_PAIRS){
+        const ofSlot = slots.includes(pref) ? pref : (slots.includes(fallback) ? fallback : null);
+        if(!ofSlot) continue;
+        const pidA = Object.keys(assignBySlot).find(k=>assignBySlot[k]===posA);
+        const pidB = Object.keys(assignBySlot).find(k=>assignBySlot[k]===ofSlot);
+        if(!pidA || !pidB || pidA===pidB) continue;
+        const pA=getPlayer(+pidA), pB=getPlayer(+pidB);
+        if(state.rules.lineWeak && ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') counts.line++;
+        if(state.rules.lineExclusion.enabled){
+          for(const group of (state.rules.lineExclusion.groups||[])){
+            if(group.includes(+pidA) && group.includes(+pidB)) counts.keepApart++;
+          }
+        }
+      }
+    }
+    lastOF = new Set(Object.entries(assignBySlot).filter(([pid,pos])=>isOFCat(catOf(pos))).map(([pid])=>+pid));
+  }
+  return counts;
+}
+function renderMetrics(){
+  const counts = seasonCounts();
+  const totals = state.players.map(p=>({p, total: Object.values(counts[p.id]||{}).reduce((a,b)=>a+b,0)})).sort((a,b)=>b.total-a.total);
+  const max = Math.max(1, ...totals.map(x=>x.total));
+  document.getElementById('fairnessChart').innerHTML = totals.length ? totals.map(({p,total})=>
+    `<div class="row" style="gap:8px; margin-bottom:5px; align-items:center; flex-wrap:nowrap">
+      <span class="sub" style="width:9em; flex-shrink:0">${escapeAttr(dispName(p))}</span>
+      <div style="flex:1; background:var(--bg); border-radius:4px; height:14px; overflow:hidden">
+        <div style="width:${Math.round(total/max*100)}%; background:var(--accent); height:100%"></div>
+      </div>
+      <span class="tag sub" style="width:2.2em; text-align:right; flex-shrink:0">${total}</span>
+    </div>`).join('') : '<div class="sub">No players yet.</div>';
+
+  const batTotals = seasonBatterCounts();
+  const batArr = state.players.map(p=>({p, total: batTotals[p.id]||0})).sort((a,b)=>b.total-a.total);
+  const batMax = Math.max(1, ...batArr.map(x=>x.total));
+  document.getElementById('battingFairnessChart').innerHTML = batArr.some(x=>x.total>0) ? batArr.map(({p,total})=>
+    `<div class="row" style="gap:8px; margin-bottom:5px; align-items:center; flex-wrap:nowrap">
+      <span class="sub" style="width:9em; flex-shrink:0">${escapeAttr(dispName(p))}</span>
+      <div style="flex:1; background:var(--bg); border-radius:4px; height:14px; overflow:hidden">
+        <div style="width:${Math.round(total/batMax*100)}%; background:var(--good); height:100%"></div>
+      </div>
+      <span class="tag sub" style="width:2.2em; text-align:right; flex-shrink:0">${total}</span>
+    </div>`).join('') : '<div class="sub">No run boards with batters-per-inning filled in yet.</div>';
+
+  const lockedBoards = state.games.filter(g=>g.locked && !g.cancelled && g.runsByInning);
+  const maxInn = Math.max(0, ...lockedBoards.map(g=>g.innings));
+  const byInning = Array.from({length:maxInn}, ()=>({us:0,opp:0}));
+  lockedBoards.forEach(g=>{
+    (g.runsByInning.us||[]).forEach((v,i)=>{ if(v!=null && byInning[i]) byInning[i].us += v; });
+    (g.runsByInning.opp||[]).forEach((v,i)=>{ if(v!=null && byInning[i]) byInning[i].opp += v; });
+  });
+  const maxRuns = Math.max(1, ...byInning.flatMap(b=>[b.us,b.opp]));
+  document.getElementById('inningScoringChart').innerHTML = byInning.some(b=>b.us||b.opp) ? byInning.map((b,i)=>
+    `<div style="margin-bottom:8px">
+      <div class="sub" style="margin-bottom:2px">Inn ${i+1} — ${b.us}-${b.opp}</div>
+      <div style="display:flex; flex-direction:column; gap:2px">
+        <div style="background:var(--bg); border-radius:3px; height:8px; overflow:hidden"><div style="width:${Math.round(b.us/maxRuns*100)}%; background:var(--good); height:100%"></div></div>
+        <div style="background:var(--bg); border-radius:3px; height:8px; overflow:hidden"><div style="width:${Math.round(b.opp/maxRuns*100)}%; background:var(--accent); height:100%"></div></div>
+      </div>
+    </div>`).join('') : '<div class="sub">No run boards filled in yet.</div>';
+
+  const played = state.games.filter(g=>g.locked && !g.cancelled && g.result);
+  const buckets = {};
+  played.forEach(g=>{
+    const key = g.present.length>=10 ? '10+' : String(g.present.length);
+    buckets[key] = buckets[key] || {w:0,l:0,t:0,rf:0,ra:0,n:0};
+    buckets[key][g.result.toLowerCase()]++; buckets[key].rf+=(g.ourScore||0); buckets[key].ra+=(g.oppScore||0); buckets[key].n++;
+  });
+  document.getElementById('attendanceChart').innerHTML = Object.keys(buckets).length
+    ? ['6','7','8','9','10+'].filter(k=>buckets[k]).map(k=>{const b=buckets[k];
+        return `<div class="sub" style="margin-bottom:4px">${k} players — ${b.w}-${b.l}${b.t?'-'+b.t:''} (${b.n} game${b.n===1?'':'s'}), runs ${b.rf}-${b.ra}</div>`;}).join('')
+    : '<div class="sub">No scored games yet.</div>';
+
+  const locked = state.games.filter(g=>g.locked && !g.cancelled);
+  const lockedSorted = locked.slice().sort(cmpGames);
+  const agg = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0};
+  const lastGameFor = {}; Object.keys(agg).forEach(k=>lastGameFor[k]=null);
+  lockedSorted.forEach(g=>{
+    const c = countViolations(g);
+    Object.keys(agg).forEach(k=>{ agg[k]+=c[k]; if(c[k]>0) lastGameFor[k]=g; });
+  });
+  const labels = {eligibility:'Played a position they were marked never for', repeatCap:'Over the repeat-position cap', ofBackToBack:'Outfield two innings in a row', wall:'Wall side with no Strong fielder', wallOF:'Outfield wall side with no Strong fielder', line:'Two Weak fielders in one line', keepApart:'Kept-apart players shared a line'};
+  const frictionEl = document.getElementById('frictionList');
+  frictionEl.innerHTML = locked.length
+    ? Object.entries(agg).map(([k,v])=>{
+        const g = lastGameFor[k];
+        const jump = (v>0 && g) ? ` <button type="button" class="iconbtn frictionJumpBtn" data-gid="${g.id}" style="font-size:.72rem">(${escapeAttr(g.opponent)} - ${g.date})</button>` : '';
+        return `<div class="sub" style="margin-bottom:4px">${labels[k]}: <b class="tag" style="color:var(--fg)">${v}</b>${jump}</div>`;
+      }).join('') + `<div class="sub" style="margin-top:6px; opacity:.8">(opponent, date) = the most recent locked game where that rule was still broken — click it to jump straight there and check if it's still an issue.</div>`
+    : '<div class="sub">No locked games yet.</div>';
+  frictionEl.querySelectorAll('.frictionJumpBtn').forEach(b=>b.addEventListener('click',e=>{
+    jumpToGame(+e.target.dataset.gid);
+  }));
+
+  renderRunsByPosition();
+}
+function jumpToGame(id){
+  const tabBtn = document.querySelector('[data-tab=games]'); if(tabBtn) tabBtn.click();
+  selectGame(id);
+  const card = document.getElementById('gameDetailCard'); if(card) card.scrollIntoView();
+}
+// Links each inning's fielding grid to that inning's opponent runs from the run board.
+// Totaled by position, and broken out by player when a position has been shared across
+// more than one person, so a lopsided number is visible without the tool asserting cause.
+function fieldingRunsStats(){
+  const byPos = {};
+  state.games.filter(g=>g.locked && !g.cancelled).forEach(g=>{
+    const opp = (g.runsByInning && g.runsByInning.opp) || [];
+    for(let i=0; i<g.innings; i++){
+      const r = opp[i];
+      if(r==null) continue;
+      Object.keys(g.grid||{}).forEach(pidStr=>{
+        const pos = (g.grid[pidStr]||[])[i];
+        if(!pos || pos==='BN') return;
+        const pid = +pidStr;
+        byPos[pos] = byPos[pos] || {innings:0, runs:0, byPlayer:{}};
+        byPos[pos].innings++; byPos[pos].runs += r;
+        byPos[pos].byPlayer[pid] = byPos[pos].byPlayer[pid] || {innings:0, runs:0};
+        byPos[pos].byPlayer[pid].innings++; byPos[pos].byPlayer[pid].runs += r;
+      });
+    }
+  });
+  return byPos;
+}
+// Needs at least this many innings before a row is worth showing at all — a single inning with
+// zero runs isn't a real data point, it's just "nothing happened yet."
+const RUNS_BY_POS_MIN_INNINGS = 2;
+function renderRunsByPosition(){
+  const el = document.getElementById('runsByPositionChart'); if(!el) return;
+  const stats = fieldingRunsStats();
+  const posList = Object.keys(stats)
+    .filter(pos=>stats[pos].innings>=RUNS_BY_POS_MIN_INNINGS)
+    .sort((a,b)=>stats[b].innings-stats[a].innings)
+    .slice(0,3);
+  if(!posList.length){ el.innerHTML = '<div class="sub">Not enough locked, scored games yet.</div>'; return; }
+  el.innerHTML = posList.map(pos=>{
+    const s = stats[pos];
+    const posAvg = s.runs / s.innings;
+    const players = Object.entries(s.byPlayer)
+      .filter(([,pp])=>pp.innings>=RUNS_BY_POS_MIN_INNINGS)
+      .sort((a,b)=>b[1].innings-a[1].innings)
+      .slice(0,3);
+    const playerRows = players.length>1 ? players.map(([pid,pp])=>{
+      const p = getPlayer(+pid);
+      const avg = pp.runs / pp.innings;
+      return `<div class="sub" style="margin-left:16px">${escapeAttr(dispName(p))} — ${pp.innings} inn, ${avg.toFixed(2)} runs allowed/inn</div>`;
+    }).join('') : '';
+    return `<div style="margin-bottom:10px">
+      <b class="sub">${pos}</b>
+      <span class="sub">— ${s.innings} inning${s.innings===1?'':'s'}, ${posAvg.toFixed(2)} runs allowed/inn avg</span>
+      ${playerRows}
+    </div>`;
+  }).join('');
+}
+function fieldingWorks(g){
+  const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
+  if(presentPlayers.length===0) return false;
+  const positions = fieldPositionsFor(presentPlayers.length);
+  const benchCount = Math.max(0, presentPlayers.length - positions.length);
+  const slots = [...positions, ...Array.from({length:benchCount},()=>'BN')];
+  if(Object.keys(g.grid).length !== presentPlayers.length) return false;
+  for(const p of presentPlayers){ if(!g.grid[p.id] || g.grid[p.id].length !== g.innings) return false; }
+
+  const perGameCount = {}; presentPlayers.forEach(p=>perGameCount[p.id]={});
+  let lastOF = new Set();
+  for(let inn=0; inn<g.innings; inn++){
+    const assignBySlot = {};
+    for(const p of presentPlayers){
+      const pos = g.grid[p.id][inn];
+      if(pos==null) return false;
+      if(pos==='BN') continue;
+      if(!slots.includes(pos)) return false;
+      assignBySlot[p.id] = pos;
+      const cat = catOf(pos);
+      if(!p.elig[cat]) return false;
+      if(IF.has(pos)){
+        perGameCount[p.id][pos] = (perGameCount[p.id][pos]||0)+1;
+        if(perGameCount[p.id][pos] > state.rules.repeatCap) return false;
+      }
+      if(isOFCat(cat) && state.rules.banOF && lastOF.has(p.id)) return false;
+    }
+    if(state.rules.ofDetail==='specific'){
+      if(state.rules.wallSides){
+        for(const side of [LEFT_IF, RIGHT_IF]){
+          const filled = side.filter(pos=>Object.values(assignBySlot).includes(pos));
+          if(filled.length){
+            const hasStrong = filled.some(pos=>{
+              const pid = Object.keys(assignBySlot).find(k=>assignBySlot[k]===pos);
+              return pid && ratingOf(getPlayer(+pid), pos)==='strong';
+            });
+            if(!hasStrong) return false;
+          }
+        }
+      }
+      if(state.rules.wallSides){
+        for(const side of [LEFT_OF, RIGHT_OF]){
+          const filled = side.filter(pos=>Object.values(assignBySlot).includes(pos));
+          if(filled.length){
+            const hasStrong = filled.some(pos=>{
+              const pid = Object.keys(assignBySlot).find(k=>assignBySlot[k]===pos);
+              return pid && ratingOf(getPlayer(+pid), pos)==='strong';
+            });
+            if(!hasStrong) return false;
+          }
+        }
+      }
+      if(state.rules.lineWeak || state.rules.lineExclusion.enabled){
+        for(const [posA, pref, fallback] of LINE_PAIRS){
+          const ofSlot = slots.includes(pref) ? pref : (slots.includes(fallback) ? fallback : null);
+          if(!ofSlot) continue;
+          const pidA = Object.keys(assignBySlot).find(k=>assignBySlot[k]===posA);
+          const pidB = Object.keys(assignBySlot).find(k=>assignBySlot[k]===ofSlot);
+          if(!pidA || !pidB || pidA===pidB) continue;
+          const pA=getPlayer(+pidA), pB=getPlayer(+pidB);
+          if(state.rules.lineWeak && ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') return false;
+          if(state.rules.lineExclusion.enabled){
+            for(const group of (state.rules.lineExclusion.groups||[])){
+              if(group.includes(+pidA) && group.includes(+pidB)) return false;
+            }
+          }
+        }
+      }
+    }
+    lastOF = new Set(Object.entries(assignBySlot).filter(([pid,pos])=>isOFCat(catOf(pos))).map(([pid])=>+pid));
+  }
+  return true;
+}
+document.getElementById('genAllBtn').addEventListener('click',()=>{
+  const drafts = state.games.filter(g=>!g.locked && !g.cancelled).sort(cmpGames);
+  drafts.forEach(g=>{
+    if(!fieldingWorks(g)) regenerateIfBetter(g);
+    if(!battingOrderWorks(g)) g.order = computeBattingOrder(g, state.rules.battingMode);
+  });
+  save(); renderGamesList(); if(currentGameId) renderGameDetail();
+});
+
+// ---------- Boot ----------
+function boot(){
+  if(state.players.length===0){
+    const seed = [['Veronica',7],['Renley',8],['Nora',20],['Harper',14],['Lydia',11],['Stella',27],['Paige',1],['GraceLynn',4],['Scarlett',21]];
+    seed.forEach(([n,num])=>{
+      const p = { id:state.nextPlayerId++, name:n, jersey:String(num), elig:{}, pref:{}, strong:{}, rating:{}, battingStrength:'average' };
+      ALLCATS.forEach(c=>{ p.elig[c] = ['1B','2B','3B','SS','OF','LF','LC','CF','RC','RF'].includes(c); p.pref[c]='neutral'; p.strong[c]=false; p.rating[c]='average'; });
+      state.players.push(p);
+    });
+    const [ver,ren,nor,har,lyd,stel,pai,gra,sca] = state.players;
+    pai.elig.C = true; pai.elig.OF=false; pai.elig['1B']=false; pai.elig['2B']=false; pai.elig['3B']=false; pai.elig.SS=false;
+    ['LF','LC','CF','RC','RF'].forEach(k=>pai.elig[k]=false);
+    [ren,nor,lyd,stel,gra].forEach(p=>p.elig.P=true);
+    stel.elig['1B']=false;
+  }
+  migrate();
+  document.getElementById('teamName').value = state.teamName;
+  renderProfileSelect(); renderRoster(); renderRules(); renderGamesList(); renderSeason(); renderScheduleRows();
+  const vb = document.getElementById('appVersionBadge'); if(vb) vb.textContent = 'v'+APP_VERSION;
+}
+boot();
+})();
+</script>
+
+</div>
+
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('service-worker.js').catch(function(){});
+  });
+}
+</script>
+<style>
+  html[data-gate="blocked"] #appRoot{display:none}
+  html[data-gate="blocked"] #gateScreen{display:flex}
+</style>
+</body>
+</html>
