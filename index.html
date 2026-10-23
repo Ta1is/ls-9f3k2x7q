@@ -82,19 +82,19 @@
 /* Layout: single-column app shell — sticky tab bar, content card, print sheet hidden until Print view */
 :root{
   --bg:#f6f1e7; --surface:#ffffff; --fg:#20261f; --muted:#6b6456;
-  --accent:#c0512b; --accent-ink:#ffffff; --line:#ded4bd; --good:#2f7a4f; --warn:#b8860b;
+  --accent:#c0512b; --accent-ink:#ffffff; --line:#ded4bd; --good:#2f7a4f; --warn:#b8860b; --bad:#b23a3a;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#181611; --surface:#211e18; --fg:#eee7d8; --muted:#a79d87;
-    --accent:#e0794a; --accent-ink:#1a1206; --line:#3a3528; --good:#5fb083; --warn:#dba93b;
+    --accent:#e0794a; --accent-ink:#1a1206; --line:#3a3528; --good:#5fb083; --warn:#dba93b; --bad:#e2645f;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#181611; --surface:#211e18; --fg:#eee7d8; --muted:#a79d87;
-  --accent:#e0794a; --accent-ink:#1a1206; --line:#3a3528; --good:#5fb083; --warn:#dba93b;
+  --accent:#e0794a; --accent-ink:#1a1206; --line:#3a3528; --good:#5fb083; --warn:#dba93b; --bad:#e2645f;
   color-scheme: dark;
 }
 *{box-sizing:border-box}
@@ -125,6 +125,7 @@ th{color:var(--muted); font-weight:600; font-size:.73rem; text-transform:upperca
 .tablewrap{overflow-x:auto}
 input[type=text],input[type=number],input[type=date],select{
   background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-family:inherit; font-size:.88rem;
+  max-width:100%;
 }
 button.btn{
   font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:.78rem; letter-spacing:.03em;
@@ -183,28 +184,31 @@ ol.battingorder li.dragging{opacity:.4}
 <header class="app">
   <div>
     <h1 id="teamTitle">Lineup Studio</h1>
-    <div class="sub">A configurable rotation engine — prototype, not the phone app yet.</div>
   </div>
-  <div class="row">
+  <div class="row" style="justify-content:space-between; flex:1; flex-wrap:wrap">
     <label class="sub">Season/Team <select id="profileSelect" style="margin-left:6px"></select></label>
-    <button class="btn ghost small" id="newProfileBtn">+ New season/team</button>
-    <button class="btn ghost small" id="deleteProfileBtn" style="color:var(--warn)">Delete this season/team</button>
-    <label class="sub">Team name <input type="text" id="teamName" style="margin-left:6px"></label>
+    <div class="row" style="flex-wrap:wrap">
+      <button class="btn ghost small" id="newProfileBtn">+ New season/team</button>
+      <button class="btn ghost small" id="deleteProfileBtn" style="color:var(--warn)">Delete this season/team</button>
+    </div>
   </div>
 </header>
 
 <nav class="tabs">
-  <button data-tab="roster" class="active">Roster</button>
+  <button data-tab="games" class="active">Games</button>
+  <button data-tab="roster">Roster</button>
   <button data-tab="rules">Rules</button>
-  <button data-tab="games">Games</button>
   <button id="seasonTabBtn" data-tab="season">Season</button>
   <button data-tab="metrics">Metrics</button>
 </nav>
 
-<section class="view active" id="view-roster">
+<section class="view" id="view-roster">
   <div class="card" id="setupcard">
-    <h2>Roster &amp; eligible positions</h2>
-    <div class="sub" style="margin-bottom:10px">Jersey # is cosmetic only — it's just a label next to the name and never used by the engine. Check every spot a player can play. Outfield columns depend on the Outfield detail setting on the Rules tab.</div>
+    <div class="row" style="justify-content:space-between; margin-bottom:10px; flex-wrap:wrap">
+      <h2 style="margin:0">Roster</h2>
+      <label class="sub">Team name <input type="text" id="teamName" style="margin-left:6px"></label>
+    </div>
+    <div class="sub" style="margin-bottom:10px">Add and edit players.</div>
     <div class="tablewrap">
       <table id="rosterTable">
         <thead><tr id="rosterHeadRow"></tr></thead>
@@ -217,11 +221,13 @@ ol.battingorder li.dragging{opacity:.4}
 
 <section class="view" id="view-rules">
   <div class="card" id="rulescard">
-    <h2>Rotation rules</h2>
+    <h2>Fielding Rotation Rules</h2>
     <div class="row" style="gap:20px; margin-bottom:10px">
-      <label class="sub">Max innings at same infield spot/game <input type="number" id="repeatCap" min="1" max="7" style="width:4em; margin-left:6px"></label>
-      <label class="chip"><input type="checkbox" id="banOF">No outfield two innings in a row</label>
       <label class="sub">Rotate fielding every <input type="number" id="blockSize" min="1" max="3" style="width:3.5em; margin:0 6px">inning(s)</label>
+      <label class="sub">Max innings at same infield spot/game <input type="number" id="repeatCap" min="1" max="7" style="width:4em; margin-left:6px"></label>
+    </div>
+    <div class="row" style="margin-bottom:16px">
+      <label class="chip"><input type="checkbox" id="banOF">Allow player to play an outfield position two innings in a row</label>
     </div>
     <div class="row" style="margin-bottom:16px">
       <label class="sub">Outfield detail
@@ -230,65 +236,72 @@ ol.battingorder li.dragging{opacity:.4}
           <option value="specific">Specific — Left / Center / Right</option>
         </select>
       </label>
-      <span class="sub">Specific unlocks per-side eligibility (LF/LC vs RF/RC) plus the Wall, Line, and Keep-players-apart rules below.</span>
     </div>
 
     <div id="sideRulesBlock" style="display:none">
       <h3 style="margin-bottom:6px">Wall — infield + outfield strength</h3>
-      <div class="sub" style="margin-bottom:8px">Checks each side of the field for a Strong-rated player: SS+3B on the infield left, 2B+1B on the infield right, and (when 4 outfielders are out there) LF+LC on the outfield left, RC+RF on the outfield right. With fewer than 4 outfielders it just checks whichever single OF slot exists on that side. Up to 4 walls total whenever the roster and ratings support it.</div>
+      <div class="sub" style="margin-bottom:8px">Puts a Strong-rated player on each side of the field, infield and outfield.</div>
       <label class="chip" style="margin-bottom:14px"><input type="checkbox" id="wallSides">Enforce the wall</label>
 
       <h3 style="margin-bottom:6px">Line — front-to-back pairs</h3>
-      <div class="sub" style="margin-bottom:8px">Checks the spot directly behind each infielder: SS/LC, 3B/LF, 2B/RC, 1B/RF (collapsing to whichever single outfield slot exists on a 2- or 3-outfielder game). Flags it when both players in a pair are rated Weak.</div>
+      <div class="sub" style="margin-bottom:8px">Checks the spot directly behind each infielder: SS/LC, 3B/LF, 2B/RC, 1B/RF. Flags it when both players in a pair are rated Weak.</div>
       <label class="chip" style="margin-bottom:14px"><input type="checkbox" id="lineWeak">Avoid two Weak fielders in the same line</label>
 
-      <h3 style="margin-bottom:6px">Keep players apart</h3>
+      <h3 style="margin-bottom:6px">Keep players apart — line</h3>
       <div class="sub" style="margin-bottom:8px">Separate from ratings — pick specific players who should never end up in one of those same front-to-back pairs together, no matter how they're rated.</div>
       <label class="chip" style="margin-bottom:8px"><input type="checkbox" id="lineExclusionEnabled">Enable</label>
       <div id="lineGroups"></div>
       <button class="btn ghost small" id="addLineGroupBtn">+ Add group to keep apart</button>
+
+      <h3 style="margin-bottom:6px; margin-top:16px">Keep players apart — wall</h3>
+      <div class="sub" style="margin-bottom:8px">Pick specific players who should never share a side of the field together (left or right, infield or outfield) — for any reason you choose, not just ratings.</div>
+      <label class="chip" style="margin-bottom:8px"><input type="checkbox" id="wallExclusionEnabled">Enable</label>
+      <div id="wallGroups"></div>
+      <button class="btn ghost small" id="addWallGroupBtn">+ Add group to keep apart</button>
     </div>
 
     <h2 style="margin-top:20px">Batting order</h2>
     <div class="row" style="margin-bottom:8px">
       <label class="sub">Default mode
-        <select id="battingMode" style="margin-left:6px">
-          <option value="fixed">Fixed — reuse last game's order automatically</option>
-          <option value="rotate">Rotate — shift last game's order by N spots</option>
-          <option value="fairness">Fairness — favors whoever's batted lower on average, with some randomness</option>
-          <option value="random">Random — fresh shuffle every time</option>
-          <option value="manual">Manual only — no auto-generation</option>
+        <select id="battingMode" style="margin-left:6px; max-width:100%">
+          <option value="fixed">Fixed — reuse last order</option>
+          <option value="rotate">Rotate — shift by N spots</option>
+          <option value="fairness">Fairness — favors who's batted less</option>
+          <option value="random">Random — fresh shuffle</option>
+          <option value="manual">Manual only</option>
         </select>
       </label>
       <label class="sub" id="battingShiftWrap">Shift by <input type="number" id="battingShift" min="1" max="8" style="width:3.2em; margin:0 4px">spot(s)</label>
     </div>
-    <div class="sub" style="margin-bottom:10px">Fixed and Rotate apply automatically the moment a new game is created, carrying the previous game's order forward. Fairness and Random only run when you click "Generate order" on the Games tab, since they change things up on purpose. Every mode stays a starting point — drag to adjust after.</div>
 
     <div class="row" style="margin-bottom:8px; align-items:center">
       <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingStrengthEnabled">Keep Weak-rated batters spaced apart</label>
       <label class="sub" id="battingGapWrap">by at least <input type="number" id="battingGap" min="1" max="8" style="width:3.2em; margin:0 4px">spot(s)</label>
     </div>
-    <div class="sub" style="margin-bottom:10px">Applies whenever an order is generated (any mode above). 2 spots means two Weak batters can't bat back-to-back; higher numbers spread them further apart. Doesn't touch an order you've since dragged by hand.</div>
 
-    <div class="sub">Each player's eligible positions, fielding preference, fielding rating, and batting strength now live in their own popup — click Edit next to their name on the Roster tab.</div>
   </div>
 </section>
 
-<section class="view" id="view-games">
+<section class="view active" id="view-games">
   <div class="card" id="gamesListCard">
-    <h2>Season schedule</h2>
-    <div id="gamesList" style="margin-bottom:12px"></div>
-    <div class="row" style="margin-bottom:16px">
-      <button class="btn" id="newGameBtn">+ Quick-add one game</button>
-      <button class="btn ghost" id="genAllBtn">Generate all draft games</button>
-    </div>
-    <h3 style="margin-bottom:8px">Build the schedule ahead of time</h3>
-    <div class="sub" style="margin-bottom:8px">Add every remaining game with its opponent and date, then Generate all draft games once — the engine plans fairness across the whole list, not just one game at a time.</div>
-    <div id="scheduleRows"></div>
-    <div class="row" style="margin-top:8px">
-      <button class="btn ghost small" id="addScheduleRowBtn">+ Add row</button>
-      <button class="btn small" id="commitScheduleBtn">Add all to schedule</button>
-    </div>
+    <h2 style="margin-bottom:4px">Season schedule</h2>
+    <div class="sub" style="margin-bottom:12px">Tap a game to open its lineup.</div>
+    <div id="gamesList"></div>
+  </div>
+
+  <div class="card">
+    <button class="btn" id="genAllBtn" style="width:100%; text-align:center; padding:12px 14px; font-size:.85rem">Generate all draft games</button>
+    <details id="scheduleBuilderDetails" style="margin-top:14px">
+      <summary class="sub" style="cursor:pointer; font-weight:600">+ Build the schedule</summary>
+      <div style="margin-top:10px">
+        <div id="scheduleRows"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn ghost small" id="addScheduleRowBtn">+ Add row</button>
+          <button class="btn small" id="newGameBtn">+ Quick-add one game</button>
+          <button class="btn small" id="commitScheduleBtn">Add all to schedule</button>
+        </div>
+      </div>
+    </details>
   </div>
   <div class="card" id="gameDetailCard" style="display:none"></div>
   <div class="printsheet" id="printSheet"></div>
@@ -301,7 +314,7 @@ ol.battingorder li.dragging{opacity:.4}
   </div>
   <div class="card">
     <h2>Season totals</h2>
-    <div class="sub" style="margin-bottom:10px">Only locked (played) games count here — drafts don't affect fairness math yet.</div>
+    <div class="sub" style="margin-bottom:10px">Only locked (played) games count here.</div>
     <div class="tablewrap"><table id="seasonTable"><thead><tr id="seasonHeadRow"></tr></thead><tbody></tbody></table></div>
   </div>
 </section>
@@ -309,17 +322,17 @@ ol.battingorder li.dragging{opacity:.4}
 <section class="view" id="view-metrics">
   <div class="card">
     <h2>Playing-time fairness</h2>
-    <div class="sub" style="margin-bottom:10px">Total fielding innings per player across locked games — same numbers as Season totals, easier to scan for outliers.</div>
+    <div class="sub" style="margin-bottom:10px">Fielding innings per player this season.</div>
     <div id="fairnessChart"></div>
   </div>
   <div class="card">
     <h2>Batting fairness</h2>
-    <div class="sub" style="margin-bottom:10px">Times at bat, derived from the run board's "our batters per inning" row plus the batting order — no need to log individual names.</div>
+    <div class="sub" style="margin-bottom:10px">Times at bat per player this season.</div>
     <div id="battingFairnessChart"></div>
   </div>
   <div class="card">
     <h2>Scoring by inning</h2>
-    <div class="sub" style="margin-bottom:10px">Runs scored across the season, inning by inning. Top bar is us, bottom bar is the opponent, both scaled the same way.</div>
+    <div class="sub" style="margin-bottom:10px">Runs scored, inning by inning.</div>
     <div class="row" style="gap:14px; margin-bottom:8px">
       <span class="sub" style="display:flex; align-items:center; gap:5px"><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:var(--good)"></span>Us</span>
       <span class="sub" style="display:flex; align-items:center; gap:5px"><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:var(--accent)"></span>Opponent</span>
@@ -328,17 +341,19 @@ ol.battingorder li.dragging{opacity:.4}
   </div>
   <div class="card">
     <h2>Attendance impact</h2>
-    <div class="sub" style="margin-bottom:10px">Record and run differential split by how many players showed up that game.</div>
+    <div class="sub" style="margin-bottom:10px">Record and runs by how many players showed up.</div>
     <div id="attendanceChart"></div>
   </div>
   <div class="card">
     <h2>Rule friction</h2>
-    <div class="sub" style="margin-bottom:10px">How often a locked game's final lineup still broke a soft rule because nothing cleaner was available. A lot of hits on one rule across the season is a sign it may be too strict for this roster size.</div>
+    <div class="sub" style="margin-bottom:10px">How often a locked lineup still broke a rule.</div>
     <div id="frictionList"></div>
   </div>
   <div class="card">
     <h2>Runs allowed by fielding assignment</h2>
-    <div class="sub" style="margin-bottom:10px">Links each inning's fielding grid to that inning's opponent runs from the run board, totaled by position and (when more than one player has played a spot) by player. Shows the top 3 positions with at least 2 innings of data, and within each, the top 3 players — anything thinner than that isn't a real sample and is left off. Read this as a pattern to watch, not a verdict — small sample sizes swing a lot, and runs in an inning depend on far more than one fielder.</div>
+    <div class="sub" style="margin-bottom:10px">Runs allowed while each position/player was in the field.</div>
+    <div class="row" id="runsByPosFilters" style="margin-bottom:8px; flex-wrap:wrap"></div>
+    <label class="sub" style="display:block; margin-bottom:10px">Show top <input type="number" id="runsByPosPlayerCount" min="1" max="5" style="width:3em; margin:0 4px">player(s) per position</label>
     <div id="runsByPositionChart"></div>
   </div>
 </section>
@@ -362,7 +377,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.026';
+const APP_VERSION = '0.035';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -394,7 +409,9 @@ function freshProfile(name){
   return {
     teamName: name || 'My Team',
     players: [],
-    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2} },
+    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2} },
+    metricsPrefs: {positions:null, playersPerPos:3},
+    scheduleBuilderOpen: true,
     games: [],
     nextPlayerId:1, nextGameId:1
   };
@@ -457,7 +474,18 @@ function fullRerender(){
   document.getElementById('gameDetailCard').style.display = 'none';
   document.getElementById('teamName').value = state.teamName;
   renderProfileSelect(); renderRoster(); renderRules(); renderGamesList(); renderSeason(); renderScheduleRows();
+  applyScheduleBuilderOpenState();
 }
+// Open by default for a brand-new team/season (or anyone who hasn't touched it yet) so the
+// controls for adding games aren't accidentally hidden from a first-time user; once a coach
+// collapses it, that choice is remembered per team/season.
+function applyScheduleBuilderOpenState(){
+  const d = document.getElementById('scheduleBuilderDetails');
+  if(d) d.open = !!state.scheduleBuilderOpen;
+}
+document.getElementById('scheduleBuilderDetails').addEventListener('toggle', e=>{
+  state.scheduleBuilderOpen = e.target.open; save();
+});
 function openProfileModal(){
   const box = document.getElementById('profileModalBox');
   box.innerHTML = `
@@ -492,6 +520,13 @@ function migrate(){
   if(state.rules.wallSides===undefined) state.rules.wallSides = !!state.rules.wallPairs;
   if(state.rules.lineWeak===undefined) state.rules.lineWeak = false;
   state.rules.lineExclusion = state.rules.lineExclusion || {enabled:false, groups:[]};
+  state.rules.lineExclusion.groups = (state.rules.lineExclusion.groups||[]).map(g=> Array.isArray(g) ? {pids:g, reason:''} : g);
+  state.rules.wallExclusion = state.rules.wallExclusion || {enabled:false, groups:[]};
+  state.rules.wallExclusion.groups = (state.rules.wallExclusion.groups||[]).map(g=> Array.isArray(g) ? {pids:g, reason:''} : g);
+  if(!state.metricsPrefs) state.metricsPrefs = {positions:null, playersPerPos:3};
+  if(state.metricsPrefs.playersPerPos===undefined) state.metricsPrefs.playersPerPos = 3;
+  if(state.metricsPrefs.positions===undefined) state.metricsPrefs.positions = null;
+  if(state.scheduleBuilderOpen===undefined) state.scheduleBuilderOpen = true;
   if(state.rules.battingMode===undefined) state.rules.battingMode = 'fixed';
   if(state.rules.battingShift===undefined) state.rules.battingShift = 1;
   if(!state.rules.battingStrength) state.rules.battingStrength = {enabled:true, gap:2};
@@ -619,12 +654,11 @@ function renderPlayerModalContent(pid){
       <label class="sub">Name <input type="text" id="modalName" value="${escapeAttr(p.name)}" style="width:10em"></label>
     </div>
     <h3 style="margin-bottom:6px">Batting strength</h3>
-    <div class="sub" style="margin-bottom:6px">Used to keep two Weak batters from landing back-to-back in the order.</div>
     <div class="row" style="margin-bottom:18px; flex-wrap:nowrap">
       ${['weak','average','strong'].map(v=>`<button class="rating ${v==='strong'?'strong':v==='weak'?'weak':''} ${p.battingStrength===v?'selectedRating':''}" data-battingval="${v}" style="flex:1; text-transform:capitalize">${v}</button>`).join('')}
     </div>
     <h3 style="margin-bottom:6px">Fielding</h3>
-    <div class="sub" style="margin-bottom:8px">Uncheck a spot this player will never play. Click the preference word to cycle Neutral → Preferred → Avoid. Click the rating to cycle Average → Strong → Weak.</div>
+    <div class="sub" style="margin-bottom:8px">Select this player's positions, frequency, and strengths.</div>
     <div class="tablewrap"><table><tbody>
       ${cats.map(c=>`<tr>
         <td style="width:2.2em"><input type="checkbox" class="modalElig" data-cat="${c}" ${p.elig[c]?'checked':''}></td>
@@ -660,12 +694,13 @@ function cyclePref(cur){ return cur==='neutral'?'preferred':cur==='preferred'?'a
 function cycleRating(cur){ return cur==='average'?'strong':cur==='strong'?'weak':'average'; }
 function renderRules(){
   document.getElementById('repeatCap').value = state.rules.repeatCap;
-  document.getElementById('banOF').checked = state.rules.banOF;
+  document.getElementById('banOF').checked = !state.rules.banOF;
   document.getElementById('blockSize').value = state.rules.blockSize;
   document.getElementById('ofDetail').value = state.rules.ofDetail;
   document.getElementById('wallSides').checked = state.rules.wallSides;
   document.getElementById('lineWeak').checked = state.rules.lineWeak;
   document.getElementById('lineExclusionEnabled').checked = state.rules.lineExclusion.enabled;
+  document.getElementById('wallExclusionEnabled').checked = state.rules.wallExclusion.enabled;
   document.getElementById('sideRulesBlock').style.display = state.rules.ofDetail==='specific' ? 'block' : 'none';
   document.getElementById('battingMode').value = state.rules.battingMode;
   document.getElementById('battingShift').value = state.rules.battingShift;
@@ -675,9 +710,10 @@ function renderRules(){
   document.getElementById('battingGapWrap').style.display = state.rules.battingStrength.enabled ? 'inline-flex' : 'none';
 
   renderLineGroups();
+  renderWallGroups();
 }
 document.getElementById('repeatCap').addEventListener('input',e=>{state.rules.repeatCap=+e.target.value||2; save();});
-document.getElementById('banOF').addEventListener('change',e=>{state.rules.banOF=e.target.checked; save();});
+document.getElementById('banOF').addEventListener('change',e=>{state.rules.banOF=!e.target.checked; save();});
 document.getElementById('blockSize').addEventListener('input',e=>{state.rules.blockSize=+e.target.value||1; save();});
 document.getElementById('ofDetail').addEventListener('change',e=>{
   state.rules.ofDetail = e.target.value; save(); renderRoster(); renderRules(); renderSeason();
@@ -685,34 +721,48 @@ document.getElementById('ofDetail').addEventListener('change',e=>{
 document.getElementById('wallSides').addEventListener('change',e=>{state.rules.wallSides=e.target.checked; save();});
 document.getElementById('lineWeak').addEventListener('change',e=>{state.rules.lineWeak=e.target.checked; save();});
 document.getElementById('lineExclusionEnabled').addEventListener('change',e=>{state.rules.lineExclusion.enabled=e.target.checked; save();});
+document.getElementById('wallExclusionEnabled').addEventListener('change',e=>{state.rules.wallExclusion.enabled=e.target.checked; save();});
 document.getElementById('battingMode').addEventListener('change',e=>{state.rules.battingMode=e.target.value; save(); renderRules();});
 document.getElementById('battingShift').addEventListener('input',e=>{state.rules.battingShift=Math.max(1,+e.target.value||1); save();});
 document.getElementById('battingStrengthEnabled').addEventListener('change',e=>{state.rules.battingStrength.enabled=e.target.checked; save(); renderRules();});
 document.getElementById('battingGap').addEventListener('input',e=>{state.rules.battingStrength.gap=Math.max(1,+e.target.value||2); save();});
 document.getElementById('addLineGroupBtn').addEventListener('click',()=>{
-  state.rules.lineExclusion.groups.push([]); save(); renderLineGroups();
+  state.rules.lineExclusion.groups.push({pids:[], reason:''}); save(); renderLineGroups();
 });
-function renderLineGroups(){
-  const el = document.getElementById('lineGroups'); el.innerHTML='';
-  state.rules.lineExclusion.groups.forEach((group,gi)=>{
+function renderExclusionGroups(containerId, groups, labelSuffix, onChange){
+  const el = document.getElementById(containerId); el.innerHTML='';
+  groups.forEach((group,gi)=>{
     const row = document.createElement('div'); row.className='groupRow';
     row.innerHTML = `<div class="row" style="justify-content:space-between; margin-bottom:6px">
-        <b class="sub">Group ${gi+1} — never share a line pair</b>
+        <b class="sub">Group ${gi+1} — ${labelSuffix}</b>
         <button class="iconbtn" data-gi="${gi}" data-act="removeGroup">✕</button>
       </div>
-      <div class="row">${state.players.map(p=>`<label class="chip"><input type="checkbox" data-gi="${gi}" data-pid="${p.id}" class="groupBox" ${group.includes(p.id)?'checked':''}>${escapeAttr(dispName(p))}</label>`).join('')}</div>`;
+      <div class="row" style="margin-bottom:6px">${state.players.map(p=>`<label class="chip"><input type="checkbox" data-gi="${gi}" data-pid="${p.id}" class="groupBox" ${group.pids.includes(p.id)?'checked':''}>${escapeAttr(dispName(p))}</label>`).join('')}</div>
+      <label class="sub" style="display:block">Reason (optional) <input type="text" data-gi="${gi}" class="groupReason" value="${escapeAttr(group.reason||'')}" placeholder="For your own reference later" style="width:100%; margin-top:4px"></label>`;
     el.appendChild(row);
   });
   el.querySelectorAll('[data-act=removeGroup]').forEach(b=>b.addEventListener('click',e=>{
-    state.rules.lineExclusion.groups.splice(+e.target.dataset.gi,1); save(); renderLineGroups();
+    groups.splice(+e.target.dataset.gi,1); save(); onChange();
   }));
   el.querySelectorAll('.groupBox').forEach(b=>b.addEventListener('change',e=>{
     const gi=+e.target.dataset.gi, pid=+e.target.dataset.pid;
-    const group = state.rules.lineExclusion.groups[gi];
-    const idx = group.indexOf(pid);
-    if(e.target.checked){ if(idx===-1) group.push(pid); } else { if(idx!==-1) group.splice(idx,1); }
+    const group = groups[gi];
+    const idx = group.pids.indexOf(pid);
+    if(e.target.checked){ if(idx===-1) group.pids.push(pid); } else { if(idx!==-1) group.pids.splice(idx,1); }
     save();
   }));
+  el.querySelectorAll('.groupReason').forEach(inp=>inp.addEventListener('input',e=>{
+    groups[+e.target.dataset.gi].reason = e.target.value; save();
+  }));
+}
+function renderLineGroups(){
+  renderExclusionGroups('lineGroups', state.rules.lineExclusion.groups, 'never share a line pair', renderLineGroups);
+}
+document.getElementById('addWallGroupBtn').addEventListener('click',()=>{
+  state.rules.wallExclusion.groups.push({pids:[], reason:''}); save(); renderWallGroups();
+});
+function renderWallGroups(){
+  renderExclusionGroups('wallGroups', state.rules.wallExclusion.groups, 'never share a wall side', renderWallGroups);
 }
 
 // ---------- Season totals (locked games only) ----------
@@ -941,19 +991,38 @@ function renderScheduleRows(){
   }));
 }
 let currentGameId = null;
+function gameRowHTML(g, isLast){
+  const statusClass = g.cancelled?'cancelled':g.locked?'locked':'draft';
+  const statusText = g.cancelled?'Cancelled':g.locked?'Complete':'Draft';
+  const resultStyle = g.result==='W' ? 'background:var(--good); color:#06200f'
+    : g.result==='L' ? 'background:var(--bad); color:#fff' : '';
+  const scoreLine = g.result ? `<span style="display:block; font-size:.75em; opacity:.85; margin-top:1px; text-transform:none; line-height:1.1">${g.result} ${g.ourScore}-${g.oppScore}</span>` : '';
+  return `<div class="row" style="margin-bottom:10px; padding-bottom:10px; ${isLast?'':'border-bottom:1px solid var(--line)'}">
+    <button class="btn small" data-gid="${g.id}" style="padding:5px 10px; line-height:1.2; ${resultStyle}">${escapeAttr(g.opponent)} — ${g.date} ›${scoreLine}</button>
+    <span class="badge ${statusClass}">${statusText}</span>
+    ${g.shortened? `<span class="badge" style="background:var(--warn); color:#1a1206">Ended early: ${g.innings}/${g.plannedInnings||g.innings}</span>`:''}
+  </div>`;
+}
 function renderGamesList(){
   const el = document.getElementById('gamesList'); el.innerHTML='';
   if(state.games.length===0){ el.innerHTML = '<div class="sub">No games yet.</div>'; return; }
-  state.games.slice().sort(cmpGames).forEach(g=>{
-    const row=document.createElement('div'); row.className='row'; row.style.marginBottom='6px';
-    const statusClass = g.cancelled?'cancelled':g.locked?'locked':'draft';
-    const statusText = g.cancelled?'Cancelled':g.locked?'Complete':'Draft';
-    row.innerHTML = `<button class="btn ghost small" data-gid="${g.id}">${escapeAttr(g.opponent)} — ${g.date}</button>
-      <span class="badge ${statusClass}">${statusText}</span>
-      ${g.shortened? `<span class="badge" style="background:var(--warn); color:#1a1206">Ended early: ${g.innings}/${g.plannedInnings||g.innings}</span>`:''}
-      ${g.result? `<span class="badge" style="background:${g.result==='W'?'var(--good)':g.result==='L'?'var(--warn)':'var(--muted)'}; color:${g.result==='T'?'var(--surface)':'#06200f'}">${g.result} ${g.ourScore}-${g.oppScore}</span>`:''}`;
-    el.appendChild(row);
-  });
+  const sorted = state.games.slice().sort(cmpGames);
+  const upcoming = sorted.filter(g=>!g.locked && !g.cancelled);
+  const completed = sorted.filter(g=>g.locked || g.cancelled);
+  const sectionLabel = text => `<div class="sub" style="margin:0 0 10px; font-weight:700; text-transform:uppercase; font-size:.7rem; letter-spacing:.06em; color:var(--muted)">${text}</div>`;
+  let html = '';
+  if(completed.length){
+    html += sectionLabel('Completed');
+    html += completed.map((g,i)=>gameRowHTML(g, i===completed.length-1)).join('');
+  }
+  if(upcoming.length && completed.length){
+    html += `<div style="height:16px"></div>`;
+  }
+  if(upcoming.length){
+    html += sectionLabel('Upcoming');
+    html += upcoming.map((g,i)=>gameRowHTML(g, i===upcoming.length-1)).join('');
+  }
+  el.innerHTML = html;
   el.querySelectorAll('button').forEach(b=>b.addEventListener('click',e=>selectGame(+e.target.dataset.gid)));
 }
 function selectGame(id){
@@ -996,21 +1065,20 @@ function renderGameDetail(){
       html += `<label class="chip"><input type="checkbox" data-pid="${p.id}" ${g.present.includes(p.id)?'checked':''}>${escapeAttr(dispName(p))}</label>`;
     });
     html += `</div>`;
-    const fieldingOk = gridExists && fieldingWorks(g);
-    const genLabel = !gridExists ? 'Generate fielding' : (fieldingOk ? 'Regenerate fielding (currently valid)' : 'Fix fielding (breaks a rule)');
-    html += `<div class="row" style="margin-bottom:14px"><button class="btn" id="genBtn">${genLabel}</button>
-      <span class="sub">${positions.length} field spots, ${benchCount} on bench this game (based on ${presentPlayers.length} present)</span></div>`;
+    html += `<div class="row" style="margin-bottom:10px"><span class="sub">${positions.length} field spots, ${benchCount} on bench this game (based on ${presentPlayers.length} present)</span></div>`;
   }
 
   if(Object.keys(g.grid).length){
     html += `<h3 style="margin-bottom:8px">Fielding grid <span class="sub">(click a cell to swap)</span></h3>
       <div class="tablewrap"><table id="gameGrid"><thead><tr><th>Player</th>${Array.from({length:g.innings},(_,i)=>`<th>Inn ${i+1}</th>`).join('')}</tr></thead><tbody></tbody></table></div>`;
+  } else if(!readOnly){
+    html += `<div class="sub" style="margin-bottom:10px">No fielding generated yet.</div>`;
+  }
+  if(!readOnly){
+    html += `<div class="row" style="margin-bottom:14px"><button class="btn small" id="genBtn">Regenerate</button></div>`;
   }
 
   html += `<h3 style="margin:16px 0 8px">Batting order</h3>`;
-  if(!readOnly && state.rules.battingMode!=='manual'){
-    html += `<div class="row" style="margin-bottom:8px"><button class="btn ghost small" id="genOrderBtn">Generate order (${battingModeLabel(state.rules.battingMode)})</button></div>`;
-  }
   html += `<ol class="battingorder" id="battingOrder"></ol>`;
 
   if(!readOnly && gridExists){
@@ -1054,13 +1122,13 @@ function wireGameDetail(g){
     else { g.present = g.present.filter(x=>x!==pid); }
     g.grid={}; save(); renderGameDetail();
   }));
+  // Regenerate is a hard reshuffle, not the safety-gated "only if better" logic used by
+  // Generate all draft games. A coach hitting this button wants a fresh fielding grid AND a
+  // fresh batting order every time, no confirmation, no comparison against what's there now.
   const genBtn = document.getElementById('genBtn'); if(genBtn) genBtn.addEventListener('click',()=>{
-    const fieldingOk = Object.keys(g.grid).length>0 && fieldingWorks(g);
-    if(fieldingOk){
-      openConfirm('This lineup already satisfies every rule. Generate a new one anyway?', ()=>{ generateGame(g); save(); renderGameDetail(); }, 'Yes, regenerate');
-    } else {
-      regenerateIfBetter(g); save(); renderGameDetail();
-    }
+    generateGame(g);
+    g.order = computeBattingOrder(g, state.rules.battingMode);
+    save(); renderGameDetail();
   });
   const wgdReadOnly = g.locked || g.cancelled;
   const wgdGridExists = Object.keys(g.grid).length>0;
@@ -1089,9 +1157,6 @@ function wireGameDetail(g){
   if(g.locked && !g.cancelled) wireRunBoard(g, 'edit');
   const saveScoreBtn = document.getElementById('saveScoreBtn'); if(saveScoreBtn) saveScoreBtn.addEventListener('click',()=>{
     recomputeScore(g); save(); renderGameDetail(); renderGamesList(); renderSeason();
-  });
-  const genOrderBtn = document.getElementById('genOrderBtn'); if(genOrderBtn) genOrderBtn.addEventListener('click',()=>{
-    g.order = computeBattingOrder(g, state.rules.battingMode); save(); renderBattingOrder(g);
   });
   document.getElementById('printBtn').addEventListener('click',()=>{ buildPrintSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
   document.getElementById('deleteGameBtn').addEventListener('click',()=>{
@@ -1197,7 +1262,7 @@ function costOf(p, slot, thisGameCount, lastOF, season, relax){
 function ratingOf(p, cat){ return (p && p.rating && p.rating[cat]) || 'average'; }
 function pairPenalties(assign, slotsThisInning){
   if(state.rules.ofDetail!=='specific') return 0;
-  if(!state.rules.wallSides && !state.rules.lineWeak && !state.rules.lineExclusion.enabled) return 0;
+  if(!state.rules.wallSides && !state.rules.lineWeak && !state.rules.lineExclusion.enabled && !state.rules.wallExclusion.enabled) return 0;
   let penalty = 0;
   function pidAt(slot){ for(const [pid,s] of Object.entries(assign)) if(s===slot) return +pid; return null; }
 
@@ -1243,9 +1308,22 @@ function pairPenalties(assign, slotsThisInning){
       }
       if(state.rules.lineExclusion.enabled){
         (state.rules.lineExclusion.groups||[]).forEach(group=>{
-          if(group.includes(pidA) && group.includes(pidB)) penalty += 4000;
+          if(group.pids.includes(pidA) && group.pids.includes(pidB)) penalty += 4000;
         });
       }
+    });
+  }
+
+  // Wall exclusion: named players who should never share the same side of the field together,
+  // independent of ratings -- just a coach's own reason to keep two particular players apart.
+  if(state.rules.wallExclusion.enabled){
+    [LEFT_IF, RIGHT_IF, LEFT_OF, RIGHT_OF].forEach(side=>{
+      const sidePids = side.map(pos=>pidAt(pos)).filter(pid=>pid!=null);
+      if(sidePids.length<2) return;
+      (state.rules.wallExclusion.groups||[]).forEach(group=>{
+        const onSide = group.pids.filter(pid=>sidePids.includes(pid));
+        if(onSide.length>=2) penalty += 4000;
+      });
     });
   }
   return penalty;
@@ -1431,7 +1509,7 @@ function battingOrderWorks(g){
 // Same walk as fieldingWorks, but tallies every violation instead of stopping at the first one —
 // used by the Metrics tab's rule-friction log, not by the generator itself.
 function countViolations(g){
-  const counts = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0};
+  const counts = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0, keepApartWall:0};
   const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
   if(presentPlayers.length===0 || Object.keys(g.grid).length!==presentPlayers.length) return counts;
   const positions = fieldPositionsFor(presentPlayers.length);
@@ -1484,7 +1562,19 @@ function countViolations(g){
         if(state.rules.lineWeak && ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') counts.line++;
         if(state.rules.lineExclusion.enabled){
           for(const group of (state.rules.lineExclusion.groups||[])){
-            if(group.includes(+pidA) && group.includes(+pidB)) counts.keepApart++;
+            if(group.pids.includes(+pidA) && group.pids.includes(+pidB)) counts.keepApart++;
+          }
+        }
+      }
+      if(state.rules.wallExclusion.enabled){
+        for(const side of [LEFT_IF, RIGHT_IF, LEFT_OF, RIGHT_OF]){
+          const sidePids = side.map(pos=>{
+            const pid = Object.keys(assignBySlot).find(k=>assignBySlot[k]===pos);
+            return pid? +pid : null;
+          }).filter(pid=>pid!=null);
+          if(sidePids.length<2) continue;
+          for(const group of (state.rules.wallExclusion.groups||[])){
+            if(group.pids.filter(pid=>sidePids.includes(pid)).length>=2) counts.keepApartWall++;
           }
         }
       }
@@ -1549,13 +1639,13 @@ function renderMetrics(){
 
   const locked = state.games.filter(g=>g.locked && !g.cancelled);
   const lockedSorted = locked.slice().sort(cmpGames);
-  const agg = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0};
+  const agg = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0, keepApartWall:0};
   const lastGameFor = {}; Object.keys(agg).forEach(k=>lastGameFor[k]=null);
   lockedSorted.forEach(g=>{
     const c = countViolations(g);
     Object.keys(agg).forEach(k=>{ agg[k]+=c[k]; if(c[k]>0) lastGameFor[k]=g; });
   });
-  const labels = {eligibility:'Played a position they were marked never for', repeatCap:'Over the repeat-position cap', ofBackToBack:'Outfield two innings in a row', wall:'Wall side with no Strong fielder', wallOF:'Outfield wall side with no Strong fielder', line:'Two Weak fielders in one line', keepApart:'Kept-apart players shared a line'};
+  const labels = {eligibility:'Played a position they were marked never for', repeatCap:'Over the repeat-position cap', ofBackToBack:'Outfield two innings in a row', wall:'Wall side with no Strong fielder', wallOF:'Outfield wall side with no Strong fielder', line:'Two Weak fielders in one line', keepApart:'Kept-apart players shared a line', keepApartWall:'Kept-apart players shared a wall side'};
   const frictionEl = document.getElementById('frictionList');
   frictionEl.innerHTML = locked.length
     ? Object.entries(agg).map(([k,v])=>{
@@ -1601,26 +1691,53 @@ function fieldingRunsStats(){
 // Needs at least this many innings before a row is worth showing at all — a single inning with
 // zero runs isn't a real data point, it's just "nothing happened yet."
 const RUNS_BY_POS_MIN_INNINGS = 2;
+function renderRunsByPosFilters(){
+  const el = document.getElementById('runsByPosFilters'); if(!el) return;
+  const cats = activeCats();
+  const selected = state.metricsPrefs.positions;
+  el.innerHTML = cats.map(c=>{
+    const checked = selected===null ? true : selected.includes(c);
+    return `<label class="chip"><input type="checkbox" data-pos="${c}" class="runsByPosToggle" ${checked?'checked':''}>${c}</label>`;
+  }).join('');
+  el.querySelectorAll('.runsByPosToggle').forEach(chk=>chk.addEventListener('change',()=>{
+    // First toggle turns the implicit "show all" into an explicit list seeded with everything
+    // currently on, so from here on it's just whatever boxes are checked.
+    if(state.metricsPrefs.positions===null) state.metricsPrefs.positions = cats.slice();
+    const pos = chk.dataset.pos;
+    if(chk.checked){ if(!state.metricsPrefs.positions.includes(pos)) state.metricsPrefs.positions.push(pos); }
+    else { state.metricsPrefs.positions = state.metricsPrefs.positions.filter(p=>p!==pos); }
+    save(); renderRunsByPosition();
+  }));
+}
 function renderRunsByPosition(){
+  renderRunsByPosFilters();
+  const countInput = document.getElementById('runsByPosPlayerCount');
+  if(countInput) countInput.value = state.metricsPrefs.playersPerPos;
   const el = document.getElementById('runsByPositionChart'); if(!el) return;
   const stats = fieldingRunsStats();
+  const cats = activeCats();
+  const selected = state.metricsPrefs.positions===null ? cats : state.metricsPrefs.positions.filter(p=>cats.includes(p));
+  const playersPerPos = state.metricsPrefs.playersPerPos || 3;
   const posList = Object.keys(stats)
+    .filter(pos=>selected.includes(pos))
     .filter(pos=>stats[pos].innings>=RUNS_BY_POS_MIN_INNINGS)
-    .sort((a,b)=>stats[b].innings-stats[a].innings)
-    .slice(0,3);
-  if(!posList.length){ el.innerHTML = '<div class="sub">Not enough locked, scored games yet.</div>'; return; }
+    .sort((a,b)=>(stats[b].runs/stats[b].innings)-(stats[a].runs/stats[a].innings));
+  if(!posList.length){ el.innerHTML = '<div class="sub">Not enough locked, scored games yet for the selected positions.</div>'; return; }
   el.innerHTML = posList.map(pos=>{
     const s = stats[pos];
     const posAvg = s.runs / s.innings;
+    // Ranked by runs allowed per inning (worst first) -- this metric is about who's allowing
+    // runs, not who's played the most, so innings only gates whether a player has enough of a
+    // sample to be worth listing at all.
     const players = Object.entries(s.byPlayer)
       .filter(([,pp])=>pp.innings>=RUNS_BY_POS_MIN_INNINGS)
-      .sort((a,b)=>b[1].innings-a[1].innings)
-      .slice(0,3);
-    const playerRows = players.length>1 ? players.map(([pid,pp])=>{
+      .sort((a,b)=>(b[1].runs/b[1].innings)-(a[1].runs/a[1].innings))
+      .slice(0, playersPerPos);
+    const playerRows = players.map(([pid,pp])=>{
       const p = getPlayer(+pid);
       const avg = pp.runs / pp.innings;
       return `<div class="sub" style="margin-left:16px">${escapeAttr(dispName(p))} — ${pp.innings} inn, ${avg.toFixed(2)} runs allowed/inn</div>`;
-    }).join('') : '';
+    }).join('');
     return `<div style="margin-bottom:10px">
       <b class="sub">${pos}</b>
       <span class="sub">— ${s.innings} inning${s.innings===1?'':'s'}, ${posAvg.toFixed(2)} runs allowed/inn avg</span>
@@ -1628,6 +1745,10 @@ function renderRunsByPosition(){
     </div>`;
   }).join('');
 }
+document.getElementById('runsByPosPlayerCount').addEventListener('input', e=>{
+  state.metricsPrefs.playersPerPos = Math.min(5, Math.max(1, +e.target.value||3));
+  save(); renderRunsByPosition();
+});
 function fieldingWorks(g){
   const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
   if(presentPlayers.length===0) return false;
@@ -1691,8 +1812,20 @@ function fieldingWorks(g){
           if(state.rules.lineWeak && ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') return false;
           if(state.rules.lineExclusion.enabled){
             for(const group of (state.rules.lineExclusion.groups||[])){
-              if(group.includes(+pidA) && group.includes(+pidB)) return false;
+              if(group.pids.includes(+pidA) && group.pids.includes(+pidB)) return false;
             }
+          }
+        }
+      }
+      if(state.rules.wallExclusion.enabled){
+        for(const side of [LEFT_IF, RIGHT_IF, LEFT_OF, RIGHT_OF]){
+          const sidePids = side.map(pos=>{
+            const pid = Object.keys(assignBySlot).find(k=>assignBySlot[k]===pos);
+            return pid? +pid : null;
+          }).filter(pid=>pid!=null);
+          if(sidePids.length<2) continue;
+          for(const group of (state.rules.wallExclusion.groups||[])){
+            if(group.pids.filter(pid=>sidePids.includes(pid)).length>=2) return false;
           }
         }
       }
@@ -1718,6 +1851,7 @@ function boot(){
   migrate();
   document.getElementById('teamName').value = state.teamName;
   renderProfileSelect(); renderRoster(); renderRules(); renderGamesList(); renderSeason(); renderScheduleRows();
+  applyScheduleBuilderOpenState();
   const vb = document.getElementById('appVersionBadge'); if(vb) vb.textContent = 'v'+APP_VERSION;
 }
 boot();
