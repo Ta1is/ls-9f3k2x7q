@@ -383,7 +383,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.052';
+const APP_VERSION = '0.053';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1589,41 +1589,58 @@ function buildScorecardSheet(g, withGrid){
   const sheet = document.getElementById('printSheet');
   const order = playersInBattingOrder(g);
   const inningHeadHTML = Array.from({length:SCORECARD_INNINGS},(_,i)=>
-    `<th style="border:1px solid #999; padding:0; width:7.6%; white-space:nowrap; overflow:hidden; ${inningDividerStyle(i)}">${i+1}</th>`).join('');
+    `<th style="border:1px solid #999; padding:0; width:7.5%; white-space:nowrap; overflow:hidden; ${inningDividerStyle(i)}">${i+1}</th>`).join('');
   // Each stat column (AB, R, H, ...) only ever holds a short hand-written number, so a few of
   // them together take about the same width as one inning's diamond column.
-  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:0; width:1.8%; white-space:nowrap; overflow:hidden; font-size:7.5px; text-align:center">${s}</th>`).join('');
+  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:0; width:1.7%; white-space:nowrap; overflow:hidden; font-size:7px; text-align:center">${s}</th>`).join('');
   const playerRow = (p,i)=>`<tr>
     <td style="border:1px solid #999; padding:3px"></td>
     <td style="border:1px solid #999; padding:4px 3px; vertical-align:top">
-      <div style="font-size:.82rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${i+1}.${p ? ' '+escapeAttr(dispName(p)) : ''}</div>
-      <div style="font-size:.64rem; font-style:italic; color:#999; white-space:nowrap; margin-top:5px; padding-top:2px; border-top:1px dotted #bbb">Sub:</div>
+      <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis"><span style="font-size:.82rem; font-weight:600">${i+1}.</span>${p ? ` <span style="font-size:.98rem; font-weight:700">${escapeAttr(dispName(p))}</span>` : ''}</div>
+      <div style="font-size:.56rem; font-style:italic; color:#999; white-space:nowrap; margin-top:3px; padding-top:1px; border-top:1px dotted #bbb">Sub:</div>
     </td>
     ${Array.from({length:SCORECARD_INNINGS},(_,ci)=>`<td style="border:1px solid #999; padding:2px 1px 0 0; vertical-align:top; ${inningDividerStyle(ci)}">${scorecardCellHTML()}</td>`).join('')}
     ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
   </tr>`;
-  let html = `<style>@media print{ @page{ size: portrait; margin: 8mm; } }</style>
+  const compose = (sc)=>`<style>@media print{ @page{ size: portrait; margin: 8mm; } }</style>
   <div style="padding:14px; font-family:'Public Sans',sans-serif; color:#111">
     <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px; text-align:center; text-transform:uppercase; font-size:1.3rem">${escapeAttr(state.teamName||'Team')} Scorecard</h1>
     <div style="margin-bottom:10px; color:#555; text-align:center; font-size:.85rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
     <table style="width:100%; border-collapse:collapse; font-size:.6rem; table-layout:fixed">
       <thead><tr>
-        <th style="text-align:left; border:1px solid #999; padding:1px; width:3.2%; overflow:hidden; font-size:8.5px">Pos</th>
-        <th style="text-align:left; border:1px solid #999; padding:2px; width:14%; overflow:hidden; font-size:.7rem">Player</th>
+        <th style="text-align:left; border:1px solid #999; padding:1px; width:3%; overflow:hidden; font-size:8.5px">Pos</th>
+        <th style="text-align:left; border:1px solid #999; padding:2px; width:16%; overflow:hidden; font-size:.7rem">Player</th>
         ${inningHeadHTML}
         ${statHeadHTML}
       </tr></thead>
       <tbody>${order.map((p,i)=>playerRow(p,i)).join('')}${playerRow(null, order.length)}</tbody>
     </table>
     ${withGrid && Object.keys(g.grid||{}).length ? `<div style="margin-top:8px; page-break-inside:avoid; break-inside:avoid">
-      <div style="font-family:'Oswald',sans-serif; font-size:.7rem; text-transform:uppercase; margin-bottom:2px">Fielding, inning by inning</div>
-      <table style="border-collapse:collapse; table-layout:fixed; font-size:.72rem; line-height:1.15; width:${100+g.innings*40}px; max-width:100%">
-        <thead><tr><th style="text-align:left; border:1px solid #999; padding:1px 4px; width:100px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border:1px solid #999; padding:1px; ${inningDividerStyle(i)}">${i+1}</th>`).join('')}</tr></thead>
-        <tbody>${order.map(p=>`<tr><td style="border:1px solid #999; padding:1px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map((c,i)=>`<td style="border:1px solid #999; padding:1px; text-align:center; font-family:monospace; ${inningDividerStyle(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+      <div style="font-family:'Oswald',sans-serif; font-size:${(0.7*Math.max(1,Math.min(sc,1.3))).toFixed(2)}rem; text-transform:uppercase; margin-bottom:2px">Fielding, inning by inning</div>
+      <table style="border-collapse:collapse; table-layout:fixed; font-size:${(0.72*sc).toFixed(3)}rem; line-height:1.15; width:${Math.round((100+g.innings*40)*sc)}px; max-width:100%">
+        <thead><tr><th style="text-align:left; border:1px solid #999; padding:${sc}px ${4*sc}px; width:${Math.round(100*sc)}px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border:1px solid #999; padding:${sc}px; ${inningDividerStyle(i)}">${i+1}</th>`).join('')}</tr></thead>
+        <tbody>${order.map(p=>`<tr><td style="border:1px solid #999; padding:${sc}px ${4*sc}px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map((c,i)=>`<td style="border:1px solid #999; padding:${sc}px; text-align:center; font-family:monospace; ${inningDividerStyle(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>` : ''}
     <div class="noprint" style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. If it still overflows to a second page, set scale to "Fit to page" in the print dialog.</div>
   </div>`;
-  sheet.innerHTML = html;
+  // The grid's size flexes with the scorecard: its current size is the floor, up to 2x when the
+  // card is short enough that both still fit one portrait Letter page (8mm margins). Measured in
+  // an off-screen box at the real printable width; if even the floor doesn't fit, the grid just
+  // lands whole on a second page.
+  let scale = 1;
+  if(withGrid && Object.keys(g.grid||{}).length){
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute; left:-10000px; top:0; width:755px; visibility:hidden';
+    document.body.appendChild(probe);
+    const AVAIL = 990;
+    for(let sc=2; sc>=1; sc=Math.round((sc-0.05)*100)/100){
+      probe.innerHTML = compose(sc);
+      const np = probe.querySelector('.noprint'); if(np) np.style.display='none';
+      if(probe.firstElementChild && probe.querySelector('div').offsetHeight <= AVAIL){ scale = sc; break; }
+    }
+    document.body.removeChild(probe);
+  }
+  sheet.innerHTML = compose(scale);
   sheet.style.display='block';
 }
 
