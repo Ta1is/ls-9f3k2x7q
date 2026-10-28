@@ -151,13 +151,13 @@ button.btn:disabled{opacity:.4; cursor:not-allowed}
 .closeX{background:none; border:none; color:var(--muted); font-size:1.3rem; cursor:pointer; line-height:1; padding:2px 6px}
 .gridcell{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; font-size:.76rem; text-align:center; cursor:pointer; border-radius:4px; padding:5px 4px}
 .gridcell:hover{outline:2px solid var(--accent)}
-.posP{background:#e8d4cb} .posC{background:#d9dfe8} .posIF{background:#dde8d9} .posOF{background:#eee3c7} .posBN{background:none; color:var(--muted)}
+.posP{background:#e8d4cb} .posC{background:#d9dfe8} .posIF{background:#dde8d9} .posOF{background:#eee3c7} .posBN{background:none; color:var(--muted)} .posEH{background:#e3dcef}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) .posP{background:#3c2c23} :root:not([data-theme="light"]) .posC{background:#222c38}
-  :root:not([data-theme="light"]) .posIF{background:#223422} :root:not([data-theme="light"]) .posOF{background:#3a3220}
+  :root:not([data-theme="light"]) .posIF{background:#223422} :root:not([data-theme="light"]) .posOF{background:#3a3220} :root:not([data-theme="light"]) .posEH{background:#2f2745}
 }
 :root[data-theme="dark"] .posP{background:#3c2c23} :root[data-theme="dark"] .posC{background:#222c38}
-:root[data-theme="dark"] .posIF{background:#223422} :root[data-theme="dark"] .posOF{background:#3a3220}
+:root[data-theme="dark"] .posIF{background:#223422} :root[data-theme="dark"] .posOF{background:#3a3220} :root[data-theme="dark"] .posEH{background:#2f2745}
 .badge{font-size:.68rem; padding:2px 7px; border-radius:999px; font-family:'JetBrains Mono',monospace}
 .badge.draft{background:var(--warn); color:#1a1206} .badge.locked{background:var(--good); color:#06200f}
 .badge.cancelled{background:var(--muted); color:var(--surface)}
@@ -282,6 +282,15 @@ ol.battingorder li.dragging{opacity:.4}
     </div>
 
     <div class="row" style="margin-bottom:8px; align-items:center">
+      <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingAllEnabled">Bat all players</label>
+    </div>
+    <div class="sub" style="margin-bottom:8px">On: every player here today is in the batting lineup. Off: only players who get a spot in the game (a field position or EH) bat; bench-only players don't.</div>
+    <div class="row" style="margin-bottom:8px; align-items:center" id="ehRow">
+      <label class="chip" style="margin-bottom:0"><input type="checkbox" id="ehEnabled">Enable EH (extra hitter) spots</label>
+      <label class="sub" id="ehCountWrap">how many <input type="number" id="ehCount" min="1" max="3" style="width:3.2em; margin:0 4px"></label>
+    </div>
+    <div class="sub" id="ehNote" style="margin-bottom:8px">EH spots are handed out evenly like any position, to players beyond the field spots. They only apply while "Bat all players" is off.</div>
+    <div class="row" style="margin-bottom:8px; align-items:center">
       <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingForceEnabled">Force players into the batting spot set on their player card</label>
     </div>
 
@@ -383,7 +392,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.053';
+const APP_VERSION = '0.055';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -416,7 +425,7 @@ function freshProfile(name){
   return {
     teamName: name || 'My Team',
     players: [],
-    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2}, battingForce:false },
+    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2}, battingForce:false, battingAll:true, ehEnabled:false, ehCount:1 },
     metricsPrefs: {positions:null, playersPerPos:3},
     scheduleBuilderOpen: true,
     games: [],
@@ -537,6 +546,10 @@ function migrate(){
   if(state.rules.battingMode===undefined) state.rules.battingMode = 'fixed';
   if(state.rules.battingShift===undefined) state.rules.battingShift = 1;
   if(state.rules.battingForce===undefined) state.rules.battingForce = false;
+  if(state.rules.battingAll===undefined) state.rules.battingAll = true;
+  if(state.rules.ehEnabled===undefined) state.rules.ehEnabled = false;
+  if(!state.rules.ehCount) state.rules.ehCount = 1;
+  state.players.forEach(p=>{ if(p.elig && p.elig.EH===undefined) p.elig.EH = true; });
   if(!state.rules.battingStrength) state.rules.battingStrength = {enabled:true, gap:2};
   if(state.rules.battingStrength.enabled===undefined) state.rules.battingStrength.enabled = true;
   if(state.rules.battingStrength.gap===undefined) state.rules.battingStrength.gap = 2;
@@ -586,11 +599,13 @@ function ofLabels(n){
 function posClass(code){
   if(code==='P') return 'posP'; if(code==='C') return 'posC';
   if(code==='BN') return 'posBN';
+  if(code==='EH') return 'posEH';
   if(['1B','2B','3B','SS'].includes(code)) return 'posIF';
   return 'posOF';
 }
 function catOf(code){
   if(code==='BN') return null;
+  if(code==='EH') return 'EH';
   if(code==='P'||code==='C') return code;
   if(IF.has(code)) return code;
   if(state.rules.ofDetail==='specific'){
@@ -603,7 +618,7 @@ function dispName(p){ return (p.jersey? '#'+p.jersey+' ' : '') + p.name; }
 
 // ---------- Roster ----------
 function addPlayer(){
-  const p = { id:state.nextPlayerId++, name:'Player '+(state.players.length+1), jersey:'', elig:{}, pref:{}, strong:{}, rating:{}, battingStrength:'average' };
+  const p = { id:state.nextPlayerId++, name:'Player '+(state.players.length+1), jersey:'', elig:{EH:true}, pref:{}, strong:{}, rating:{}, battingStrength:'average' };
   ALLCATS.forEach(c=>{ p.elig[c] = ['1B','2B','3B','SS','OF','LF','LC','CF','RC','RF'].includes(c); p.pref[c]='neutral'; p.strong[c]=false; p.rating[c]='average'; });
   state.players.push(p); save(); renderRoster(); renderRules();
 }
@@ -680,11 +695,13 @@ function renderPlayerModalContent(pid){
         <td>${p.elig[c]? `<button class="rating ${p.rating[c]==='strong'?'strong':p.rating[c]==='weak'?'weak':''}" data-cat="${c}" data-kind="rating">${p.rating[c]}</button>` : ''}</td>
       </tr>`).join('')}
     </tbody></table></div>
+    ${ehSlotCount()>0 ? `<label class="chip" style="margin-top:12px"><input type="checkbox" id="modalEH" ${p.elig.EH!==false?'checked':''}>EH (extra hitter) — can be given an EH spot</label>` : ''}
     <div class="row" style="margin-top:16px"><button class="btn" id="modalDoneBtn">Done</button></div>
   `;
   document.getElementById('modalCloseBtn').addEventListener('click', closePlayerModal);
   document.getElementById('modalDoneBtn').addEventListener('click', closePlayerModal);
   document.getElementById('modalBatSpot').addEventListener('change', e=>{ p.forcedBatSpot = e.target.value ? +e.target.value : null; save(); });
+  const ehBox = document.getElementById('modalEH'); if(ehBox) ehBox.addEventListener('change', e=>{ p.elig.EH = e.target.checked; save(); });
   document.getElementById('modalJersey').addEventListener('input', e=>{ p.jersey=e.target.value; save(); });
   document.getElementById('modalName').addEventListener('input', e=>{ p.name=e.target.value; save(); });
   box.querySelectorAll('[data-battingval]').forEach(btn=>btn.addEventListener('click', ()=>{
@@ -722,6 +739,12 @@ function renderRules(){
   document.getElementById('battingStrengthEnabled').checked = state.rules.battingStrength.enabled;
   document.getElementById('battingGap').value = state.rules.battingStrength.gap;
   document.getElementById('battingForceEnabled').checked = !!state.rules.battingForce;
+  document.getElementById('battingAllEnabled').checked = state.rules.battingAll!==false;
+  document.getElementById('ehEnabled').checked = !!state.rules.ehEnabled;
+  document.getElementById('ehEnabled').disabled = state.rules.battingAll!==false;
+  document.getElementById('ehCount').value = state.rules.ehCount||1;
+  document.getElementById('ehCountWrap').style.display = (state.rules.ehEnabled && state.rules.battingAll===false) ? 'inline-flex' : 'none';
+  document.getElementById('ehRow').style.opacity = state.rules.battingAll!==false ? '.5' : '1';
   document.getElementById('battingGapWrap').style.display = state.rules.battingStrength.enabled ? 'inline-flex' : 'none';
 
   renderLineGroups();
@@ -743,6 +766,9 @@ document.getElementById('addLineGroupBtn').addEventListener('click',()=>{
 document.getElementById('battingMode').addEventListener('change',e=>{state.rules.battingMode=e.target.value; save(); renderRules();});
 document.getElementById('battingShift').addEventListener('input',e=>{state.rules.battingShift=Math.max(1,+e.target.value||1); save();});
 document.getElementById('battingStrengthEnabled').addEventListener('change',e=>{state.rules.battingStrength.enabled=e.target.checked; save(); renderRules();});
+document.getElementById('battingAllEnabled').addEventListener('change',e=>{state.rules.battingAll=e.target.checked; save(); renderRules(); if(currentGameId) renderGameDetail();});
+document.getElementById('ehEnabled').addEventListener('change',e=>{state.rules.ehEnabled=e.target.checked; save(); renderRules();});
+document.getElementById('ehCount').addEventListener('input',e=>{state.rules.ehCount=Math.max(1,Math.min(3,+e.target.value||1)); save();});
 document.getElementById('battingForceEnabled').addEventListener('change',e=>{state.rules.battingForce=e.target.checked; save();});
 document.getElementById('battingGap').addEventListener('input',e=>{state.rules.battingStrength.gap=Math.max(1,+e.target.value||2); save();});
 function renderExclusionGroups(containerId, groups, labelSuffix, onChange){
@@ -784,7 +810,7 @@ function renderWallGroups(){
 // ---------- Season totals (locked games only) ----------
 function foldGames(games){
   const cats = activeCats();
-  const counts={}; state.players.forEach(p=>{ counts[p.id]={BN:0}; cats.forEach(c=>counts[p.id][c]=0); });
+  const counts={}; state.players.forEach(p=>{ counts[p.id]={BN:0, EH:0}; cats.forEach(c=>counts[p.id][c]=0); });
   games.forEach(g=>{
     Object.entries(g.grid).forEach(([pid,arr])=>{
       pid=+pid; if(!counts[pid]) return;
@@ -986,7 +1012,7 @@ function lockedBatterIds(order){
   return new Set(order.filter(pid=>{ const p=getPlayer(pid); return p && p.forcedBatSpot; }));
 }
 function computeBattingOrder(g, mode){
-  const present = g.present;
+  const present = battingPool(g);
   let result;
   if(mode==='fixed' || mode==='rotate'){
     const prev = getPreviousGame(g);
@@ -1090,6 +1116,24 @@ function selectGame(id){
 }
 function getGame(id){ return state.games.find(g=>g.id===id); }
 
+// EH (extra hitter) slots: bat but don't field. Only exist when the rule is on, "Bat all players"
+// is off, and there are players beyond the field spots to fill them. Everyone else is bench.
+function ehSlotCount(){ return (state.rules.ehEnabled && state.rules.battingAll===false) ? Math.max(1,Math.min(3,state.rules.ehCount||1)) : 0; }
+function slotPlan(n){
+  const positions = fieldPositionsFor(n);
+  const spare = Math.max(0, n - positions.length);
+  const eh = Math.min(ehSlotCount(), spare);
+  const bench = spare - eh;
+  return {positions, eh, bench, slots:[...positions, ...Array.from({length:eh},()=>'EH'), ...Array.from({length:bench},()=>'BN')]};
+}
+// Who is in the batting lineup: everyone present when "Bat all players" is on; otherwise only
+// players who hold a spot (field position or EH) in at least one inning of this game's grid.
+// Before a grid exists there's nothing to judge by, so everyone present is included.
+function battingPool(g){
+  if(state.rules.battingAll!==false) return g.present.slice();
+  if(!g.grid || !Object.keys(g.grid).length) return g.present.slice();
+  return g.present.filter(id=>(g.grid[id]||[]).some(c=>c && c!=='BN'));
+}
 function fieldPositionsFor(count){
   const ofCount = Math.max(0, Math.min(4, count-6));
   return ['P','C','1B','2B','3B','SS', ...ofLabels(ofCount)];
@@ -1099,8 +1143,8 @@ function renderGameDetail(){
   const g = getGame(currentGameId); if(!g) return;
   const card = document.getElementById('gameDetailCard');
   const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
-  const positions = fieldPositionsFor(presentPlayers.length);
-  const benchCount = Math.max(0, presentPlayers.length - positions.length);
+  const plan = slotPlan(presentPlayers.length);
+  const positions = plan.positions, benchCount = plan.bench;
   g.positions = positions;
   const gridExists = Object.keys(g.grid).length>0;
   const readOnly = g.locked || g.cancelled;
@@ -1126,7 +1170,7 @@ function renderGameDetail(){
       html += `<label class="chip"><input type="checkbox" data-pid="${p.id}" ${g.present.includes(p.id)?'checked':''}>${escapeAttr(dispName(p))}</label>`;
     });
     html += `</div>`;
-    html += `<div class="row" style="margin-bottom:10px"><span class="sub">${positions.length} field spots, ${benchCount} on bench this game (based on ${presentPlayers.length} present)</span></div>`;
+    html += `<div class="row" style="margin-bottom:10px"><span class="sub">${positions.length} field spots${plan.eh?`, ${plan.eh} EH`:''}, ${benchCount} on bench this game (based on ${presentPlayers.length} present)</span></div>`;
   }
 
   if(Object.keys(g.grid).length){
@@ -1253,9 +1297,9 @@ function wireGameDetail(g){
 // ---------- Solver: randomized greedy, best-of-N trials ----------
 function generateGame(g){
   const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
-  const positions = fieldPositionsFor(presentPlayers.length);
-  const benchCount = Math.max(0, presentPlayers.length - positions.length);
-  const slotsPerInning = [...positions, ...Array.from({length:benchCount},()=>'BN')];
+  const plan = slotPlan(presentPlayers.length);
+  const positions = plan.positions;
+  const slotsPerInning = plan.slots;
   const season = countsThrough(g);
   const grid = {}; presentPlayers.forEach(p=>grid[p.id]=[]);
   const thisGameCount = {}; presentPlayers.forEach(p=>thisGameCount[p.id]={});
@@ -1449,9 +1493,10 @@ function swapCell(g, pid, inn, cellEl){
 // ---------- Batting order (drag to reorder — pointer events, so it works with touch too) ----------
 function renderBattingOrder(g){
   const ol = document.getElementById('battingOrder'); if(!ol) return;
-  if(!g.order || g.order.length!==g.present.length) g.order = g.present.slice();
-  g.order = g.order.filter(id=>g.present.includes(id));
-  g.present.forEach(id=>{ if(!g.order.includes(id)) g.order.push(id); });
+  const pool = battingPool(g);
+  if(!g.order || g.order.length!==pool.length) g.order = pool.slice();
+  g.order = g.order.filter(id=>pool.includes(id));
+  pool.forEach(id=>{ if(!g.order.includes(id)) g.order.push(id); });
   const readOnly = g.locked || g.cancelled;
   ol.innerHTML='';
   g.order.forEach((pid,i)=>{
@@ -1502,8 +1547,9 @@ function wireBattingDrag(g, ol){
 // ---------- Print sheets (lineup, fielding grid, scorecard -- each its own standalone page) ----------
 // Present players in their actual batting-order sequence, for any printed or on-screen list that
 // should read top-to-bottom the way the lineup card does, not roster order.
-function playersInBattingOrder(g){
-  const present = state.players.filter(p=>g.present.includes(p.id));
+function playersInBattingOrder(g, poolOnly){
+  const pool = poolOnly ? battingPool(g) : g.present;
+  const present = state.players.filter(p=>pool.includes(p.id));
   const idx = {}; (g.order||[]).forEach((id,i)=>{ idx[id]=i; });
   return present.slice().sort((a,b)=>{
     const ia = idx[a.id]!==undefined ? idx[a.id] : Infinity;
@@ -1514,7 +1560,7 @@ function playersInBattingOrder(g){
 // Batting order alone -- big, readable, nothing else on the page.
 function buildLineupSheet(g){
   const sheet = document.getElementById('printSheet');
-  const order = playersInBattingOrder(g);
+  const order = playersInBattingOrder(g, true);
   let html = `<div style="padding:40px; font-family:'Public Sans',sans-serif; color:#111">
     <h1 style="font-family:'Oswald',sans-serif; margin:0 0 6px; text-align:center">${escapeAttr(state.teamName||'Team')}</h1>
     <div style="text-align:center; color:#555; margin-bottom:28px; font-size:1.1rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
@@ -1587,7 +1633,7 @@ const SCORECARD_STAT_COLS = ['AB','R','H','SB','BB','SO','RBI','E'];
 // explicitly not a live in-game tool).
 function buildScorecardSheet(g, withGrid){
   const sheet = document.getElementById('printSheet');
-  const order = playersInBattingOrder(g);
+  const order = playersInBattingOrder(g, true);
   const inningHeadHTML = Array.from({length:SCORECARD_INNINGS},(_,i)=>
     `<th style="border:1px solid #999; padding:0; width:7.5%; white-space:nowrap; overflow:hidden; ${inningDividerStyle(i)}">${i+1}</th>`).join('');
   // Each stat column (AB, R, H, ...) only ever holds a short hand-written number, so a few of
@@ -1602,8 +1648,9 @@ function buildScorecardSheet(g, withGrid){
     ${Array.from({length:SCORECARD_INNINGS},(_,ci)=>`<td style="border:1px solid #999; padding:2px 1px 0 0; vertical-align:top; ${inningDividerStyle(ci)}">${scorecardCellHTML()}</td>`).join('')}
     ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
   </tr>`;
-  const compose = (sc)=>`<style>@media print{ @page{ size: portrait; margin: 8mm; } }</style>
+  const compose = (sc, zm)=>`<style>@media print{ @page{ size: portrait; margin: 8mm; } }</style>
   <div style="padding:14px; font-family:'Public Sans',sans-serif; color:#111">
+    <div class="scCard" style="${zm<1?`zoom:${zm}`:''}">
     <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px; text-align:center; text-transform:uppercase; font-size:1.3rem">${escapeAttr(state.teamName||'Team')} Scorecard</h1>
     <div style="margin-bottom:10px; color:#555; text-align:center; font-size:.85rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
     <table style="width:100%; border-collapse:collapse; font-size:.6rem; table-layout:fixed">
@@ -1615,10 +1662,11 @@ function buildScorecardSheet(g, withGrid){
       </tr></thead>
       <tbody>${order.map((p,i)=>playerRow(p,i)).join('')}${playerRow(null, order.length)}</tbody>
     </table>
+    </div>
     ${withGrid && Object.keys(g.grid||{}).length ? `<div style="margin-top:8px; page-break-inside:avoid; break-inside:avoid">
       <div style="font-family:'Oswald',sans-serif; font-size:${(0.7*Math.max(1,Math.min(sc,1.3))).toFixed(2)}rem; text-transform:uppercase; margin-bottom:2px">Fielding, inning by inning</div>
       <table style="border-collapse:collapse; table-layout:fixed; font-size:${(0.72*sc).toFixed(3)}rem; line-height:1.15; width:${Math.round((100+g.innings*40)*sc)}px; max-width:100%">
-        <thead><tr><th style="text-align:left; border:1px solid #999; padding:${sc}px ${4*sc}px; width:${Math.round(100*sc)}px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border:1px solid #999; padding:${sc}px; ${inningDividerStyle(i)}">${i+1}</th>`).join('')}</tr></thead>
+        <thead><tr><th style="text-align:left; font-size:inherit; border:1px solid #999; padding:${sc}px ${4*sc}px; width:${Math.round(100*sc)}px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="font-size:inherit; border:1px solid #999; padding:${sc}px; ${inningDividerStyle(i)}">${i+1}</th>`).join('')}</tr></thead>
         <tbody>${order.map(p=>`<tr><td style="border:1px solid #999; padding:${sc}px ${4*sc}px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map((c,i)=>`<td style="border:1px solid #999; padding:${sc}px; text-align:center; font-family:monospace; ${inningDividerStyle(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>` : ''}
     <div class="noprint" style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. If it still overflows to a second page, set scale to "Fit to page" in the print dialog.</div>
@@ -1627,20 +1675,36 @@ function buildScorecardSheet(g, withGrid){
   // card is short enough that both still fit one portrait Letter page (8mm margins). Measured in
   // an off-screen box at the real printable width; if even the floor doesn't fit, the grid just
   // lands whole on a second page.
-  let scale = 1;
-  if(withGrid && Object.keys(g.grid||{}).length){
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:absolute; left:-10000px; top:0; width:755px; visibility:hidden';
-    document.body.appendChild(probe);
-    const AVAIL = 990;
+  // Sizing, measured off-screen at the real printable width (Letter, 8mm margins):
+  //  1) The scorecard never runs onto a second page. If it's too tall at full size (a 16-player
+  //     roster), the whole card is scaled down just enough to fit one page. Smaller rosters keep
+  //     the full-size card, untouched.
+  //  2) The grid then flexes in the space left: its current size is the floor, up to 2x when the
+  //     card is short. If even the floor doesn't fit, the grid lands whole on a second page.
+  const AVAIL = 950, PAD = 28; // ~4% under the true printable height as a safety margin
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute; left:-10000px; top:0; width:755px; visibility:hidden';
+  document.body.appendChild(probe);
+  const measure = (sc, zm)=>{
+    probe.innerHTML = compose(sc, zm);
+    const np = probe.querySelector('.noprint'); if(np) np.style.display='none';
+    return probe.querySelector('div').offsetHeight;
+  };
+  const hasGrid = withGrid && Object.keys(g.grid||{}).length;
+  let zoom = 1, scale = 1;
+  probe.innerHTML = compose(1, 1);
+  const cardH = probe.querySelector('.scCard').offsetHeight;
+  if(cardH + PAD > AVAIL){
+    zoom = Math.floor((AVAIL - PAD) / cardH * 100) / 100;
+    if(hasGrid) scale = Math.min(2, Math.floor(700 / (100 + g.innings*40) * 20) / 20);
+  } else if(hasGrid){
     for(let sc=2; sc>=1; sc=Math.round((sc-0.05)*100)/100){
-      probe.innerHTML = compose(sc);
-      const np = probe.querySelector('.noprint'); if(np) np.style.display='none';
-      if(probe.firstElementChild && probe.querySelector('div').offsetHeight <= AVAIL){ scale = sc; break; }
+      if(measure(sc, 1) <= AVAIL){ scale = sc; break; }
     }
-    document.body.removeChild(probe);
   }
-  sheet.innerHTML = compose(scale);
+  document.body.removeChild(probe);
+  sheet.innerHTML = compose(scale, zoom);
+
   sheet.style.display='block';
 }
 
@@ -1697,9 +1761,10 @@ function countWeakBattingViolations(order, gap){
 // hit the ceiling. Either way, an accidental click never erases a lineup someone already set — it
 // only fills in or improves games that aren't already as good as this can make them.
 function battingOrderWorks(g){
-  if(!g.order || g.order.length!==g.present.length) return false;
+  const pool = battingPool(g);
+  if(!g.order || g.order.length!==pool.length) return false;
   const set = new Set(g.order);
-  if(!g.present.every(id=>set.has(id))) return false;
+  if(!pool.every(id=>set.has(id))) return false;
   if(state.rules.battingForce){
     const forced = applyForcedSpots(g.order);
     if(forced.some((id,i)=>id!==g.order[i])) return false;
@@ -1722,9 +1787,8 @@ function countViolations(g){
   const counts = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0, keepApartWall:0};
   const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
   if(presentPlayers.length===0 || Object.keys(g.grid).length!==presentPlayers.length) return counts;
-  const positions = fieldPositionsFor(presentPlayers.length);
-  const benchCount = Math.max(0, presentPlayers.length - positions.length);
-  const slots = [...positions, ...Array.from({length:benchCount},()=>'BN')];
+  const plan = slotPlan(presentPlayers.length);
+  const positions = plan.positions, slots = plan.slots;
   const perGameCount = {}; presentPlayers.forEach(p=>perGameCount[p.id]={});
   let lastOF = new Set();
   for(let inn=0; inn<g.innings; inn++){
@@ -1887,7 +1951,7 @@ function fieldingRunsStats(){
       if(r==null) continue;
       Object.keys(g.grid||{}).forEach(pidStr=>{
         const pos = (g.grid[pidStr]||[])[i];
-        if(!pos || pos==='BN') return;
+        if(!pos || pos==='BN' || pos==='EH') return;
         const pid = +pidStr;
         byPos[pos] = byPos[pos] || {innings:0, runs:0, byPlayer:{}};
         byPos[pos].innings++; byPos[pos].runs += r;
@@ -1962,9 +2026,8 @@ document.getElementById('runsByPosPlayerCount').addEventListener('input', e=>{
 function fieldingWorks(g){
   const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
   if(presentPlayers.length===0) return false;
-  const positions = fieldPositionsFor(presentPlayers.length);
-  const benchCount = Math.max(0, presentPlayers.length - positions.length);
-  const slots = [...positions, ...Array.from({length:benchCount},()=>'BN')];
+  const plan = slotPlan(presentPlayers.length);
+  const positions = plan.positions, slots = plan.slots;
   if(Object.keys(g.grid).length !== presentPlayers.length) return false;
   for(const p of presentPlayers){ if(!g.grid[p.id] || g.grid[p.id].length !== g.innings) return false; }
 
@@ -1972,10 +2035,12 @@ function fieldingWorks(g){
   let lastOF = new Set();
   for(let inn=0; inn<g.innings; inn++){
     const assignBySlot = {};
+    let ehTally = 0;
     for(const p of presentPlayers){
       const pos = g.grid[p.id][inn];
       if(pos==null) return false;
       if(pos==='BN') continue;
+      if(pos==='EH') ehTally++;
       if(!slots.includes(pos)) return false;
       assignBySlot[p.id] = pos;
       const cat = catOf(pos);
@@ -2038,6 +2103,7 @@ function fieldingWorks(g){
         }
       }
     }
+    if(ehTally !== plan.eh) return false;
     lastOF = new Set(Object.entries(assignBySlot).filter(([pid,pos])=>isOFCat(catOf(pos))).map(([pid])=>+pid));
   }
   return true;
