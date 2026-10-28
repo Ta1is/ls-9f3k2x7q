@@ -383,7 +383,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.051';
+const APP_VERSION = '0.052';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1164,9 +1164,13 @@ function renderGameDetail(){
     if(gridExists) html += `<button class="btn" id="completeBtn">Game complete</button>`;
     html += `<button class="btn ghost" id="cancelBtn">Game cancelled</button>`;
   }
-  html += `<button class="btn ghost" id="printLineupBtn">Print lineup</button>
-    <button class="btn ghost" id="printGridBtn">Print fielding grid</button>
-    <button class="btn ghost" id="scorecardBtn">Print scorecard</button>
+  html += `<select id="printSelect" style="max-width:100%">
+      <option value="">Print…</option>
+      <option value="prep">Game prep (scorecard + fielding grid)</option>
+      <option value="scorecard">Scorecard only</option>
+      <option value="lineup">Batting lineup only</option>
+      <option value="grid">Fielding grid only</option>
+    </select>
     <button class="btn ghost" id="deleteGameBtn" style="color:var(--warn); border-color:var(--warn)">Delete game</button></div>`;
 
   card.innerHTML = html;
@@ -1227,9 +1231,15 @@ function wireGameDetail(g){
   const saveScoreBtn = document.getElementById('saveScoreBtn'); if(saveScoreBtn) saveScoreBtn.addEventListener('click',()=>{
     recomputeScore(g); save(); renderGameDetail(); renderGamesList(); renderSeason();
   });
-  document.getElementById('printLineupBtn').addEventListener('click',()=>{ buildLineupSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
-  document.getElementById('printGridBtn').addEventListener('click',()=>{ buildGridSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
-  document.getElementById('scorecardBtn').addEventListener('click',()=>{ buildScorecardSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
+  document.getElementById('printSelect').addEventListener('change',e=>{
+    const v = e.target.value; e.target.value = '';
+    if(!v) return;
+    if(v==='prep') buildScorecardSheet(g, true);
+    else if(v==='scorecard') buildScorecardSheet(g, false);
+    else if(v==='lineup') buildLineupSheet(g);
+    else if(v==='grid') buildGridSheet(g);
+    document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView();
+  });
   document.getElementById('deleteGameBtn').addEventListener('click',()=>{
     openConfirm(`Delete the game vs ${g.opponent} (${g.date}) permanently? This can't be undone.`, ()=>{
       state.games = state.games.filter(x=>x.id!==g.id);
@@ -1575,7 +1585,7 @@ const SCORECARD_STAT_COLS = ['AB','R','H','SB','BB','SO','RBI','E'];
 // it -- write the sub's name on the small line under the starter's). Pos is left blank for the
 // scorer to fill in by hand. For use as a pen-and-paper backup during the live game (this app is
 // explicitly not a live in-game tool).
-function buildScorecardSheet(g){
+function buildScorecardSheet(g, withGrid){
   const sheet = document.getElementById('printSheet');
   const order = playersInBattingOrder(g);
   const inningHeadHTML = Array.from({length:SCORECARD_INNINGS},(_,i)=>
@@ -1586,7 +1596,7 @@ function buildScorecardSheet(g){
   const playerRow = (p,i)=>`<tr>
     <td style="border:1px solid #999; padding:3px"></td>
     <td style="border:1px solid #999; padding:4px 3px; vertical-align:top">
-      <div style="font-size:.82rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${i+1}. ${escapeAttr(dispName(p))}</div>
+      <div style="font-size:.82rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${i+1}.${p ? ' '+escapeAttr(dispName(p)) : ''}</div>
       <div style="font-size:.64rem; font-style:italic; color:#999; white-space:nowrap; margin-top:5px; padding-top:2px; border-top:1px dotted #bbb">Sub:</div>
     </td>
     ${Array.from({length:SCORECARD_INNINGS},(_,ci)=>`<td style="border:1px solid #999; padding:2px 1px 0 0; vertical-align:top; ${inningDividerStyle(ci)}">${scorecardCellHTML()}</td>`).join('')}
@@ -1603,13 +1613,13 @@ function buildScorecardSheet(g){
         ${inningHeadHTML}
         ${statHeadHTML}
       </tr></thead>
-      <tbody>${order.map((p,i)=>playerRow(p,i)).join('')}</tbody>
+      <tbody>${order.map((p,i)=>playerRow(p,i)).join('')}${playerRow(null, order.length)}</tbody>
     </table>
-    ${Object.keys(g.grid||{}).length ? `<div style="margin-top:8px; page-break-inside:avoid; break-inside:avoid">
+    ${withGrid && Object.keys(g.grid||{}).length ? `<div style="margin-top:8px; page-break-inside:avoid; break-inside:avoid">
       <div style="font-family:'Oswald',sans-serif; font-size:.7rem; text-transform:uppercase; margin-bottom:2px">Fielding, inning by inning</div>
-      <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:.6rem">
-        <thead><tr><th style="text-align:left; border:1px solid #999; padding:1px 3px; width:14%">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border:1px solid #999; padding:1px; ${inningDividerStyle(i)}">${i+1}</th>`).join('')}</tr></thead>
-        <tbody>${order.map(p=>`<tr><td style="border:1px solid #999; padding:1px 3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map((c,i)=>`<td style="border:1px solid #999; padding:1px; text-align:center; font-family:monospace; ${inningDividerStyle(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+      <table style="border-collapse:collapse; table-layout:fixed; font-size:.72rem; line-height:1.15; width:${100+g.innings*40}px; max-width:100%">
+        <thead><tr><th style="text-align:left; border:1px solid #999; padding:1px 4px; width:100px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border:1px solid #999; padding:1px; ${inningDividerStyle(i)}">${i+1}</th>`).join('')}</tr></thead>
+        <tbody>${order.map(p=>`<tr><td style="border:1px solid #999; padding:1px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map((c,i)=>`<td style="border:1px solid #999; padding:1px; text-align:center; font-family:monospace; ${inningDividerStyle(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>` : ''}
     <div class="noprint" style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. If it still overflows to a second page, set scale to "Fit to page" in the print dialog.</div>
   </div>`;
