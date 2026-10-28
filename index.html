@@ -285,9 +285,13 @@ ol.battingorder li.dragging{opacity:.4}
       <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingAllEnabled">Bat all players</label>
     </div>
     <div class="sub" style="margin-bottom:8px">On: every player here today is in the batting lineup. Off: only players who get a spot in the game (a field position or EH) bat; bench-only players don't.</div>
+    <div class="row" style="margin-bottom:8px; align-items:center" id="subsRow">
+      <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingSubsEnabled">Substitutes take over the batting spot of the player they replace</label>
+    </div>
+    <div class="sub" id="subsNote" style="margin-bottom:8px">Only starters (anyone with a spot in inning 1) are in the lineup. When a player comes out of the field/EH and another goes in, the new player bats in that spot from that inning on. Needs "Bat all players" off. Subs are worked out from the fielding grid and shown on the batting order, lineup page and scorecard.</div>
     <div class="row" style="margin-bottom:8px; align-items:center" id="ehRow">
       <label class="chip" style="margin-bottom:0"><input type="checkbox" id="ehEnabled">Enable EH (extra hitter) spots</label>
-      <label class="sub" id="ehCountWrap">how many <input type="number" id="ehCount" min="1" max="3" style="width:3.2em; margin:0 4px"></label>
+      <label class="sub" id="ehCountWrap">how many <input type="number" id="ehCount" min="1" max="9" style="width:3.2em; margin:0 4px"></label>
     </div>
     <div class="sub" id="ehNote" style="margin-bottom:8px">EH spots are handed out evenly like any position, to players beyond the field spots. They only apply while "Bat all players" is off.</div>
     <div class="row" style="margin-bottom:8px; align-items:center">
@@ -392,7 +396,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.055';
+const APP_VERSION = '0.056';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -425,7 +429,7 @@ function freshProfile(name){
   return {
     teamName: name || 'My Team',
     players: [],
-    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2}, battingForce:false, battingAll:true, ehEnabled:false, ehCount:1 },
+    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2}, battingForce:false, battingAll:true, battingSubs:false, ehEnabled:false, ehCount:1 },
     metricsPrefs: {positions:null, playersPerPos:3},
     scheduleBuilderOpen: true,
     games: [],
@@ -547,6 +551,7 @@ function migrate(){
   if(state.rules.battingShift===undefined) state.rules.battingShift = 1;
   if(state.rules.battingForce===undefined) state.rules.battingForce = false;
   if(state.rules.battingAll===undefined) state.rules.battingAll = true;
+  if(state.rules.battingSubs===undefined) state.rules.battingSubs = false;
   if(state.rules.ehEnabled===undefined) state.rules.ehEnabled = false;
   if(!state.rules.ehCount) state.rules.ehCount = 1;
   state.players.forEach(p=>{ if(p.elig && p.elig.EH===undefined) p.elig.EH = true; });
@@ -740,6 +745,9 @@ function renderRules(){
   document.getElementById('battingGap').value = state.rules.battingStrength.gap;
   document.getElementById('battingForceEnabled').checked = !!state.rules.battingForce;
   document.getElementById('battingAllEnabled').checked = state.rules.battingAll!==false;
+  document.getElementById('battingSubsEnabled').checked = !!state.rules.battingSubs;
+  document.getElementById('battingSubsEnabled').disabled = state.rules.battingAll!==false;
+  document.getElementById('subsRow').style.opacity = state.rules.battingAll!==false ? '.5' : '1';
   document.getElementById('ehEnabled').checked = !!state.rules.ehEnabled;
   document.getElementById('ehEnabled').disabled = state.rules.battingAll!==false;
   document.getElementById('ehCount').value = state.rules.ehCount||1;
@@ -767,8 +775,9 @@ document.getElementById('battingMode').addEventListener('change',e=>{state.rules
 document.getElementById('battingShift').addEventListener('input',e=>{state.rules.battingShift=Math.max(1,+e.target.value||1); save();});
 document.getElementById('battingStrengthEnabled').addEventListener('change',e=>{state.rules.battingStrength.enabled=e.target.checked; save(); renderRules();});
 document.getElementById('battingAllEnabled').addEventListener('change',e=>{state.rules.battingAll=e.target.checked; save(); renderRules(); if(currentGameId) renderGameDetail();});
+document.getElementById('battingSubsEnabled').addEventListener('change',e=>{state.rules.battingSubs=e.target.checked; save(); renderRules(); if(currentGameId) renderGameDetail();});
 document.getElementById('ehEnabled').addEventListener('change',e=>{state.rules.ehEnabled=e.target.checked; save(); renderRules();});
-document.getElementById('ehCount').addEventListener('input',e=>{state.rules.ehCount=Math.max(1,Math.min(3,+e.target.value||1)); save();});
+document.getElementById('ehCount').addEventListener('input',e=>{state.rules.ehCount=Math.max(1,Math.min(9,+e.target.value||1)); save();});
 document.getElementById('battingForceEnabled').addEventListener('change',e=>{state.rules.battingForce=e.target.checked; save();});
 document.getElementById('battingGap').addEventListener('input',e=>{state.rules.battingStrength.gap=Math.max(1,+e.target.value||2); save();});
 function renderExclusionGroups(containerId, groups, labelSuffix, onChange){
@@ -912,9 +921,15 @@ function computeBatterCounts(g){
   const counts = {};
   if(n===0) return counts;
   let cursor = 0;
-  (g.battersByInning||[]).forEach(c=>{
+  const plan = (state.rules.battingAll===false && state.rules.battingSubs) ? lineupPlan(g) : null;
+  (g.battersByInning||[]).forEach((c,inn)=>{
     const cnt = c||0;
-    for(let i=0;i<cnt;i++){ counts[order[cursor % n]] = (counts[order[cursor % n]]||0)+1; cursor++; }
+    for(let i=0;i<cnt;i++){
+      const slot = cursor % n;
+      const owners = plan && plan.slots.length ? plan.slots[Math.min(inn, plan.slots.length-1)] : order;
+      const pid = owners[slot];
+      counts[pid] = (counts[pid]||0)+1; cursor++;
+    }
   });
   return counts;
 }
@@ -1118,7 +1133,7 @@ function getGame(id){ return state.games.find(g=>g.id===id); }
 
 // EH (extra hitter) slots: bat but don't field. Only exist when the rule is on, "Bat all players"
 // is off, and there are players beyond the field spots to fill them. Everyone else is bench.
-function ehSlotCount(){ return (state.rules.ehEnabled && state.rules.battingAll===false) ? Math.max(1,Math.min(3,state.rules.ehCount||1)) : 0; }
+function ehSlotCount(){ return (state.rules.ehEnabled && state.rules.battingAll===false) ? Math.max(1,Math.min(9,state.rules.ehCount||1)) : 0; }
 function slotPlan(n){
   const positions = fieldPositionsFor(n);
   const spare = Math.max(0, n - positions.length);
@@ -1132,7 +1147,44 @@ function slotPlan(n){
 function battingPool(g){
   if(state.rules.battingAll!==false) return g.present.slice();
   if(!g.grid || !Object.keys(g.grid).length) return g.present.slice();
+  if(state.rules.battingSubs) return g.present.filter(id=>{ const a=g.grid[id]; return a && a[0] && a[0]!=='BN'; });
   return g.present.filter(id=>(g.grid[id]||[]).some(c=>c && c!=='BN'));
+}
+// Planned substitutions (only when "Bat all players" is off and the substitute rule is on).
+// Starters bat in g.order. Walking inning to inning, anyone who goes from a spot to the bench is
+// replaced by whoever goes from the bench into a spot -- matched by the position being taken over
+// first, then in order -- and the newcomer inherits that batting slot. Returns {slots, events}:
+// slots[i] = who owns each batting slot during inning i (0-based), events = each handover.
+function lineupPlan(g){
+  const base = (g.order||[]).filter(id=>battingPool(g).includes(id));
+  const nInn = g.innings||0;
+  const slots = []; let owners = base.slice(); const events = [];
+  const on = state.rules.battingAll===false && state.rules.battingSubs && g.grid && Object.keys(g.grid).length;
+  const ids = on ? Object.keys(g.grid).map(Number) : [];
+  const act = (id,i)=>{ const c=(g.grid[id]||[])[i]; return !!c && c!=='BN'; };
+  for(let i=0;i<nInn;i++){
+    if(on && i>0){
+      const leaving = ids.filter(id=>act(id,i-1) && !act(id,i));
+      const entering = ids.filter(id=>!act(id,i-1) && act(id,i));
+      const pairs = []; const restL = [];
+      leaving.forEach(L=>{
+        const k = entering.findIndex(E=>g.grid[E][i]===g.grid[L][i-1]);
+        if(k>=0){ pairs.push([L, entering[k]]); entering.splice(k,1); } else restL.push(L);
+      });
+      restL.forEach((L,j)=>{ if(entering[j]!==undefined) pairs.push([L, entering[j]]); });
+      pairs.forEach(([L,E])=>{
+        const si = owners.indexOf(L); if(si<0) return;
+        owners = owners.slice(); owners[si] = E;
+        events.push({inning:i+1, slot:si, out:L, in:E});
+      });
+    }
+    slots.push(owners.slice());
+  }
+  return {slots, events};
+}
+// "Ava (inn 3), Zoe (inn 5)" for the substitutes who took over a given batting slot.
+function subsTextForSlot(g, slotIndex){
+  return lineupPlan(g).events.filter(e=>e.slot===slotIndex).map(e=>{ const p=getPlayer(e.in); return p ? `${p.name} (inn ${e.inning})` : ''; }).filter(Boolean).join(', ');
 }
 function fieldPositionsFor(count){
   const ofCount = Math.max(0, Math.min(4, count-6));
@@ -1503,7 +1555,8 @@ function renderBattingOrder(g){
     const p = getPlayer(pid); if(!p) return;
     const li = document.createElement('li');
     li.dataset.pid = pid;
-    li.innerHTML = `<span class="num">${i+1}.</span><span style="flex:1">${escapeAttr(dispName(p))}</span>
+    const subTxt = subsTextForSlot(g, i);
+    li.innerHTML = `<span class="num">${i+1}.</span><span style="flex:1">${escapeAttr(dispName(p))}${subTxt?` <span class="sub" style="font-size:.74rem">→ ${escapeAttr(subTxt)}</span>`:''}</span>
       ${!readOnly? `<span class="draghandle" title="Drag to reorder">⠿</span>`:''}`;
     ol.appendChild(li);
   });
@@ -1565,7 +1618,7 @@ function buildLineupSheet(g){
     <h1 style="font-family:'Oswald',sans-serif; margin:0 0 6px; text-align:center">${escapeAttr(state.teamName||'Team')}</h1>
     <div style="text-align:center; color:#555; margin-bottom:28px; font-size:1.1rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
     <h2 style="font-family:'Oswald',sans-serif; font-size:1.2rem; margin:0 0 14px; text-align:center">Batting Order</h2>
-    <ol style="font-size:1.5rem; line-height:2.2; margin:0 auto; max-width:420px; padding-left:1.3em">${order.map(p=>`<li>${escapeAttr(dispName(p))}</li>`).join('')}</ol>
+    <ol style="font-size:1.5rem; line-height:2.2; margin:0 auto; max-width:420px; padding-left:1.3em">${order.map((p,i)=>{ const st=subsTextForSlot(g,i); return `<li>${escapeAttr(dispName(p))}${st?`<div style="font-size:.85rem; line-height:1.3; color:#666; margin-bottom:6px">Sub: ${escapeAttr(st)}</div>`:''}</li>`; }).join('')}</ol>
     <div class="noprint" style="margin-top:30px; font-size:.78rem; color:#777; text-align:center">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
   </div>`;
   sheet.innerHTML = html;
@@ -1639,11 +1692,12 @@ function buildScorecardSheet(g, withGrid){
   // Each stat column (AB, R, H, ...) only ever holds a short hand-written number, so a few of
   // them together take about the same width as one inning's diamond column.
   const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:0; width:1.7%; white-space:nowrap; overflow:hidden; font-size:7px; text-align:center">${s}</th>`).join('');
+  const subTxts = order.map((p,i)=>subsTextForSlot(g,i));
   const playerRow = (p,i)=>`<tr>
     <td style="border:1px solid #999; padding:3px"></td>
     <td style="border:1px solid #999; padding:4px 3px; vertical-align:top">
       <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis"><span style="font-size:.82rem; font-weight:600">${i+1}.</span>${p ? ` <span style="font-size:.98rem; font-weight:700">${escapeAttr(dispName(p))}</span>` : ''}</div>
-      <div style="font-size:.56rem; font-style:italic; color:#999; white-space:nowrap; margin-top:3px; padding-top:1px; border-top:1px dotted #bbb">Sub:</div>
+      <div style="font-size:.56rem; font-style:italic; color:#999; white-space:nowrap; margin-top:3px; padding-top:1px; border-top:1px dotted #bbb; overflow:hidden; text-overflow:ellipsis">Sub:${p && subTxts[i] ? ' <span style="color:#444; font-style:normal">'+escapeAttr(subTxts[i])+'</span>' : ''}</div>
     </td>
     ${Array.from({length:SCORECARD_INNINGS},(_,ci)=>`<td style="border:1px solid #999; padding:2px 1px 0 0; vertical-align:top; ${inningDividerStyle(ci)}">${scorecardCellHTML()}</td>`).join('')}
     ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
