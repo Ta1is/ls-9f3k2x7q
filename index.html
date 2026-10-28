@@ -281,6 +281,10 @@ ol.battingorder li.dragging{opacity:.4}
       <label class="sub" id="battingGapWrap">by at least <input type="number" id="battingGap" min="1" max="8" style="width:3.2em; margin:0 4px">spot(s)</label>
     </div>
 
+    <div class="row" style="margin-bottom:8px; align-items:center">
+      <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingForceEnabled">Force players into the batting spot set on their player card</label>
+    </div>
+
   </div>
 </section>
 
@@ -379,7 +383,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.045';
+const APP_VERSION = '0.046';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -412,7 +416,7 @@ function freshProfile(name){
   return {
     teamName: name || 'My Team',
     players: [],
-    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2} },
+    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2}, battingForce:false },
     metricsPrefs: {positions:null, playersPerPos:3},
     scheduleBuilderOpen: true,
     games: [],
@@ -532,6 +536,7 @@ function migrate(){
   if(state.scheduleBuilderOpen===undefined) state.scheduleBuilderOpen = true;
   if(state.rules.battingMode===undefined) state.rules.battingMode = 'fixed';
   if(state.rules.battingShift===undefined) state.rules.battingShift = 1;
+  if(state.rules.battingForce===undefined) state.rules.battingForce = false;
   if(!state.rules.battingStrength) state.rules.battingStrength = {enabled:true, gap:2};
   if(state.rules.battingStrength.enabled===undefined) state.rules.battingStrength.enabled = true;
   if(state.rules.battingStrength.gap===undefined) state.rules.battingStrength.gap = 2;
@@ -660,6 +665,11 @@ function renderPlayerModalContent(pid){
     <div class="row" style="margin-bottom:18px; flex-wrap:nowrap">
       ${['weak','average','strong'].map(v=>`<button class="rating ${v==='strong'?'strong':v==='weak'?'weak':''} ${p.battingStrength===v?'selectedRating':''}" data-battingval="${v}" style="flex:1; text-transform:capitalize">${v}</button>`).join('')}
     </div>
+    <h3 style="margin-bottom:6px">Batting spot</h3>
+    <div class="sub" style="margin-bottom:8px">Pin this player to one spot in the order. Only used when "Force players into the batting spot" is checked on the Rules tab.</div>
+    <div class="row" style="margin-bottom:18px">
+      <select id="modalBatSpot"><option value="">Auto (no forced spot)</option>${Array.from({length:Math.max(state.players.length,9)},(_,i)=>`<option value="${i+1}" ${p.forcedBatSpot===i+1?'selected':''}>Bat ${i+1}${i===0?'st':i===1?'nd':i===2?'rd':'th'}</option>`).join('')}</select>
+    </div>
     <h3 style="margin-bottom:6px">Fielding</h3>
     <div class="sub" style="margin-bottom:8px">Select this player's positions, frequency, and strengths.</div>
     <div class="tablewrap"><table><tbody>
@@ -674,6 +684,7 @@ function renderPlayerModalContent(pid){
   `;
   document.getElementById('modalCloseBtn').addEventListener('click', closePlayerModal);
   document.getElementById('modalDoneBtn').addEventListener('click', closePlayerModal);
+  document.getElementById('modalBatSpot').addEventListener('change', e=>{ p.forcedBatSpot = e.target.value ? +e.target.value : null; save(); });
   document.getElementById('modalJersey').addEventListener('input', e=>{ p.jersey=e.target.value; save(); });
   document.getElementById('modalName').addEventListener('input', e=>{ p.name=e.target.value; save(); });
   box.querySelectorAll('[data-battingval]').forEach(btn=>btn.addEventListener('click', ()=>{
@@ -710,6 +721,7 @@ function renderRules(){
   document.getElementById('battingShiftWrap').style.display = state.rules.battingMode==='rotate' ? 'inline-flex' : 'none';
   document.getElementById('battingStrengthEnabled').checked = state.rules.battingStrength.enabled;
   document.getElementById('battingGap').value = state.rules.battingStrength.gap;
+  document.getElementById('battingForceEnabled').checked = !!state.rules.battingForce;
   document.getElementById('battingGapWrap').style.display = state.rules.battingStrength.enabled ? 'inline-flex' : 'none';
 
   renderLineGroups();
@@ -731,6 +743,7 @@ document.getElementById('addLineGroupBtn').addEventListener('click',()=>{
 document.getElementById('battingMode').addEventListener('change',e=>{state.rules.battingMode=e.target.value; save(); renderRules();});
 document.getElementById('battingShift').addEventListener('input',e=>{state.rules.battingShift=Math.max(1,+e.target.value||1); save();});
 document.getElementById('battingStrengthEnabled').addEventListener('change',e=>{state.rules.battingStrength.enabled=e.target.checked; save(); renderRules();});
+document.getElementById('battingForceEnabled').addEventListener('change',e=>{state.rules.battingForce=e.target.checked; save();});
 document.getElementById('battingGap').addEventListener('input',e=>{state.rules.battingStrength.gap=Math.max(1,+e.target.value||2); save();});
 function renderExclusionGroups(containerId, groups, labelSuffix, onChange){
   const el = document.getElementById(containerId); el.innerHTML='';
@@ -932,6 +945,26 @@ function avoidAdjacentWeakBatters(order, gap){
   }
   return arr;
 }
+// Pins any player with a forced batting spot to that spot (only when the Rules checkbox is on).
+// Two players asking for the same spot: the next one takes the nearest open slot after it. Spots
+// beyond the lineup size clamp to the last slot. Everyone else keeps their relative order.
+function applyForcedSpots(order){
+  if(!state.rules.battingForce) return order;
+  const forced = order.map(pid=>getPlayer(pid)).filter(p=>p && p.forcedBatSpot)
+    .sort((a,b)=>a.forcedBatSpot-b.forcedBatSpot);
+  if(!forced.length) return order;
+  const n = order.length, slots = new Array(n).fill(null);
+  forced.forEach(p=>{
+    let i = Math.min(Math.max(p.forcedBatSpot,1),n)-1;
+    while(i<n && slots[i]!==null) i++;
+    if(i>=n){ i=n-1; while(i>=0 && slots[i]!==null) i--; }
+    slots[i]=p.id;
+  });
+  const pinned = new Set(slots.filter(x=>x!==null));
+  const rest = order.filter(pid=>!pinned.has(pid));
+  let r=0;
+  return slots.map(x=> x!==null ? x : rest[r++]);
+}
 function computeBattingOrder(g, mode){
   const present = g.present;
   let result;
@@ -960,7 +993,7 @@ function computeBattingOrder(g, mode){
   if(state.rules.battingStrength && state.rules.battingStrength.enabled){
     result = avoidAdjacentWeakBatters(result, state.rules.battingStrength.gap||2);
   }
-  return result;
+  return applyForcedSpots(result);
 }
 function battingModeLabel(mode){
   return {fixed:'Fixed', rotate:'Rotate', fairness:'Fairness', random:'Random', manual:'Manual'}[mode] || mode;
@@ -1489,7 +1522,7 @@ const SCORECARD_INNINGS = 9;
 // writes the new name in over/under the starter's (see the Sub: line on the player cell).
 function diamondSVG(){
   return `<svg viewBox="0 -16 80 96" width="46" height="55" style="display:block; flex-shrink:0">
-    <path d="M0,40 Q40,-16 80,40" fill="none" stroke="#333" stroke-width="0.8"/>
+    <path d="M0,40 C0,-28 80,-28 80,40" fill="none" stroke="#333" stroke-width="0.8"/>
     <polygon points="40,0 80,40 40,80 0,40" fill="none" stroke="#333" stroke-width="1.3"/>
   </svg>`;
 }
@@ -1603,6 +1636,10 @@ function battingOrderWorks(g){
   if(!g.order || g.order.length!==g.present.length) return false;
   const set = new Set(g.order);
   if(!g.present.every(id=>set.has(id))) return false;
+  if(state.rules.battingForce){
+    const forced = applyForcedSpots(g.order);
+    if(forced.some((id,i)=>id!==g.order[i])) return false;
+  }
   if(state.rules.battingStrength && state.rules.battingStrength.enabled){
     const gap = state.rules.battingStrength.gap||2;
     const current = countWeakBattingViolations(g.order, gap);
