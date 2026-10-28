@@ -383,7 +383,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.049';
+const APP_VERSION = '0.051';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1118,7 +1118,10 @@ function renderGameDetail(){
   </div>`;
 
   if(!readOnly){
-    html += `<h3 style="margin-bottom:8px">Who's here today</h3><div class="row" id="presentChips" style="margin-bottom:14px">`;
+    const allHere = state.players.length>0 && state.players.every(p=>g.present.includes(p.id));
+    html += `<div class="row" style="margin-bottom:8px; align-items:center"><h3 style="margin:0">Who's here today</h3>
+      <label class="chip" style="margin:0"><input type="checkbox" id="presentAll" ${allHere?'checked':''}>Everyone</label></div>
+      <div class="row" id="presentChips" style="margin-bottom:14px">`;
     state.players.forEach(p=>{
       html += `<label class="chip"><input type="checkbox" data-pid="${p.id}" ${g.present.includes(p.id)?'checked':''}>${escapeAttr(dispName(p))}</label>`;
     });
@@ -1176,6 +1179,12 @@ function wireGameDetail(g){
   const oppEl = document.getElementById('oppInput'); if(oppEl) oppEl.addEventListener('input',e=>{g.opponent=e.target.value; save(); renderGamesList();});
   const dateEl = document.getElementById('dateInput'); if(dateEl) dateEl.addEventListener('input',e=>{g.date=e.target.value; save(); renderGamesList();});
   const innEl = document.getElementById('inningsInput'); if(innEl) innEl.addEventListener('input',e=>{const v=Math.max(1,+e.target.value||1); g.innings=v; g.plannedInnings=v; g.grid={}; save(); renderGameDetail();});
+  // "Everyone" is derived: checked only while every player is present, so unchecking any one
+  // player clears it without touching the others. Toggling it sets/clears all at once.
+  const allEl = document.getElementById('presentAll'); if(allEl) allEl.addEventListener('change',e=>{
+    g.present = e.target.checked ? state.players.map(p=>p.id) : [];
+    g.grid={}; save(); renderGameDetail();
+  });
   document.querySelectorAll('#presentChips input').forEach(el=>el.addEventListener('change',e=>{
     const pid=+e.target.dataset.pid;
     if(e.target.checked){ if(!g.present.includes(pid)) g.present.push(pid); }
@@ -1573,7 +1582,7 @@ function buildScorecardSheet(g){
     `<th style="border:1px solid #999; padding:0; width:7.6%; white-space:nowrap; overflow:hidden; ${inningDividerStyle(i)}">${i+1}</th>`).join('');
   // Each stat column (AB, R, H, ...) only ever holds a short hand-written number, so a few of
   // them together take about the same width as one inning's diamond column.
-  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:0; width:1.8%; white-space:nowrap; overflow:hidden; font-size:6.5px; text-align:center">${s}</th>`).join('');
+  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:0; width:1.8%; white-space:nowrap; overflow:hidden; font-size:7.5px; text-align:center">${s}</th>`).join('');
   const playerRow = (p,i)=>`<tr>
     <td style="border:1px solid #999; padding:3px"></td>
     <td style="border:1px solid #999; padding:4px 3px; vertical-align:top">
@@ -1589,13 +1598,19 @@ function buildScorecardSheet(g){
     <div style="margin-bottom:10px; color:#555; text-align:center; font-size:.85rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
     <table style="width:100%; border-collapse:collapse; font-size:.6rem; table-layout:fixed">
       <thead><tr>
-        <th style="text-align:left; border:1px solid #999; padding:1px; width:3.2%; overflow:hidden; font-size:7.5px">Pos</th>
+        <th style="text-align:left; border:1px solid #999; padding:1px; width:3.2%; overflow:hidden; font-size:8.5px">Pos</th>
         <th style="text-align:left; border:1px solid #999; padding:2px; width:14%; overflow:hidden; font-size:.7rem">Player</th>
         ${inningHeadHTML}
         ${statHeadHTML}
       </tr></thead>
       <tbody>${order.map((p,i)=>playerRow(p,i)).join('')}</tbody>
     </table>
+    ${Object.keys(g.grid||{}).length ? `<div style="margin-top:8px; page-break-inside:avoid; break-inside:avoid">
+      <div style="font-family:'Oswald',sans-serif; font-size:.7rem; text-transform:uppercase; margin-bottom:2px">Fielding, inning by inning</div>
+      <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:.6rem">
+        <thead><tr><th style="text-align:left; border:1px solid #999; padding:1px 3px; width:14%">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border:1px solid #999; padding:1px; ${inningDividerStyle(i)}">${i+1}</th>`).join('')}</tr></thead>
+        <tbody>${order.map(p=>`<tr><td style="border:1px solid #999; padding:1px 3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map((c,i)=>`<td style="border:1px solid #999; padding:1px; text-align:center; font-family:monospace; ${inningDividerStyle(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>` : ''}
     <div class="noprint" style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. If it still overflows to a second page, set scale to "Fit to page" in the print dialog.</div>
   </div>`;
   sheet.innerHTML = html;
