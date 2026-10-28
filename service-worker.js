@@ -1,7 +1,7 @@
 // Bump this version string every time you redeploy (keep it in step with APP_VERSION inside
 // index.html). On activate, it deletes every other cache name, which is what forces every
 // installed copy of the app to pick up the new files instead of serving stale ones forever.
-const CACHE_NAME = 'lineup-studio-v0.038';
+const CACHE_NAME = 'lineup-studio-v0.041';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {

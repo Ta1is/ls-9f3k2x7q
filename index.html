@@ -377,7 +377,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.038';
+const APP_VERSION = '0.041';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1443,24 +1443,33 @@ function buildLineupSheet(g){
     <div style="text-align:center; color:#555; margin-bottom:28px; font-size:1.1rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
     <h2 style="font-family:'Oswald',sans-serif; font-size:1.2rem; margin:0 0 14px; text-align:center">Batting Order</h2>
     <ol style="font-size:1.5rem; line-height:2.2; margin:0 auto; max-width:420px; padding-left:1.3em">${order.map(p=>`<li>${escapeAttr(dispName(p))}</li>`).join('')}</ol>
-    <div style="margin-top:30px; font-size:.78rem; color:#777; text-align:center">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
+    <div class="noprint" style="margin-top:30px; font-size:.78rem; color:#777; text-align:center">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
   </div>`;
   sheet.innerHTML = html;
   sheet.style.display='block';
 }
 // Fielding grid alone, players in batting order -- big, readable, nothing else on the page.
+// Shared look for an inning column boundary on a print sheet: a light vertical rule between
+// every inning, a heavier one every 3 innings so the eye can jump to the right column fast, and
+// a faint alternating tint so a whole column is easy to track down the page.
+function inningDividerStyle(i){
+  const shade = i%2===1 ? 'background:rgba(0,0,0,0.035);' : '';
+  const rule = (i>0 && i%3===0) ? 'border-left:2px solid #999;' : 'border-left:1px solid #ddd;';
+  return shade+rule;
+}
 function buildGridSheet(g){
   const sheet = document.getElementById('printSheet');
   const rows = playersInBattingOrder(g);
+  const headCells = Array.from({length:g.innings},(_,i)=>`<th style="border-bottom:2px solid #111; padding:7px; ${inningDividerStyle(i)}">Inn ${i+1}</th>`).join('');
   let html = `<div style="padding:28px; font-family:'Public Sans',sans-serif; color:#111">
     <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px">${escapeAttr(state.teamName||'Team')} vs ${escapeAttr(g.opponent)}</h1>
     <div style="margin-bottom:18px; color:#555">${g.date} — ${g.innings} innings</div>
     <h2 style="font-family:'Oswald',sans-serif; font-size:1.1rem; margin:0 0 8px">Fielding, inning by inning</h2>
     <table style="width:100%; border-collapse:collapse; font-size:1rem">
-      <thead><tr><th style="text-align:left; border-bottom:2px solid #111; padding:7px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border-bottom:2px solid #111; padding:7px">Inn ${i+1}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(p=>`<tr><td style="padding:7px; border-bottom:1px solid #ccc; font-size:1.05rem">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map(c=>`<td style="text-align:center; padding:7px; border-bottom:1px solid #ccc; font-family:monospace; font-size:1.05rem">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+      <thead><tr><th style="text-align:left; border-bottom:2px solid #111; padding:7px">Player</th>${headCells}</tr></thead>
+      <tbody>${rows.map(p=>`<tr><td style="padding:7px; border-bottom:1px solid #ccc; font-size:1.05rem">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map((c,i)=>`<td style="text-align:center; padding:7px; border-bottom:1px solid #ccc; font-family:monospace; font-size:1.05rem; ${inningDividerStyle(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>
-    <div style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
+    <div class="noprint" style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
   </div>`;
   sheet.innerHTML = html;
   sheet.style.display='block';
@@ -1483,14 +1492,14 @@ function baselineTicks(x1,y1,x2,y2){
 // Diamond icon for the paper scorecard -- home plate at bottom, 1B/2B/3B at the other three
 // corners, an open box at each base to shade in as a runner advances, pitch-count tick marks along
 // each baseline, and a home-plate pentagon below for writing the out/play (K, BB, 6-3, etc).
-// Purely a blank marking surface; nothing here is computed from app data. `small` shrinks it for
-// the rarely-used Sub. rows, which should take up much less vertical space than a starter's row.
-function diamondSVG(small){
+// Purely a blank marking surface; nothing here is computed from app data. One diamond covers the
+// whole batting-order slot for that inning, starter or sub alike -- if a sub comes in, the coach
+// just writes the new name in over/under the starter's (see the Sub: line on the player cell).
+function diamondSVG(){
   const home=[40,76], first=[76,40], second=[40,4], third=[4,40];
   const ticks = baselineTicks(...home,...first) + baselineTicks(...first,...second)
     + baselineTicks(...second,...third) + baselineTicks(...third,...home);
-  const w = small? 30 : 50, h = small? 36 : 60;
-  return `<svg viewBox="0 0 80 96" width="${w}" height="${h}" style="display:block; margin:0 auto">
+  return `<svg viewBox="0 0 80 96" width="40" height="48" style="display:block; margin:0 auto">
     <polygon points="40,4 76,40 40,76 4,40" fill="none" stroke="#333" stroke-width="1.3"/>
     ${ticks}
     <rect x="68" y="36" width="8" height="8" fill="none" stroke="#333" stroke-width="0.9"/>
@@ -1499,47 +1508,45 @@ function diamondSVG(small){
     <polygon points="33,78 47,78 47,85 40,91 33,85" fill="none" stroke="#333" stroke-width="1"/>
   </svg>`;
 }
-function scorecardCellHTML(small){
-  return `<div style="display:flex; flex-direction:column; align-items:center">${diamondSVG(small)}</div>`;
+function scorecardCellHTML(){
+  return `<div style="display:flex; flex-direction:column; align-items:center">${diamondSVG()}</div>`;
 }
 const SCORECARD_STAT_COLS = ['AB','R','H','SB','BB','SO','RBI','E'];
 // A blank, printable paper scorecard in this game's actual batting order, fixed to a standard
 // 9 innings -- the "diamond per at-bat" layout coaches know from a store-bought scorebook (USA
-// Softball style), with a thin blank Sub. row under every starter. Pos is left blank for the
+// Softball style). One diamond per batting-order slot per inning (starter and any later sub share
+// it -- write the sub's name on the small line under the starter's). Pos is left blank for the
 // scorer to fill in by hand. For use as a pen-and-paper backup during the live game (this app is
 // explicitly not a live in-game tool).
 function buildScorecardSheet(g){
   const sheet = document.getElementById('printSheet');
   const order = playersInBattingOrder(g);
   const inningHeadHTML = Array.from({length:SCORECARD_INNINGS},(_,i)=>
-    `<th style="border:1px solid #999; padding:3px; width:58px">${i+1}</th>`).join('');
-  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:3px; width:22px">${s}</th>`).join('');
-  const subRow = ()=>`<tr>
-    <td style="border:1px solid #999; padding:1px"></td>
-    <td style="border:1px solid #999; padding:1px 4px; color:#999; font-style:italic; font-size:.78rem">Sub.</td>
-    ${Array.from({length:SCORECARD_INNINGS},()=>`<td style="border:1px solid #999; padding:1px; vertical-align:top">${scorecardCellHTML(true)}</td>`).join('')}
-    ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
-  </tr>`;
+    `<th style="border:1px solid #999; padding:1px; width:38px; white-space:nowrap; ${inningDividerStyle(i)}">${i+1}</th>`).join('');
+  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:1px; width:20px; white-space:nowrap">${s}</th>`).join('');
   const playerRow = (p,i)=>`<tr>
-    <td style="border:1px solid #999; padding:4px"></td>
-    <td style="border:1px solid #999; padding:5px; font-size:.95rem; font-weight:600">${i+1}. ${escapeAttr(dispName(p))}</td>
-    ${Array.from({length:SCORECARD_INNINGS},()=>`<td style="border:1px solid #999; padding:2px; vertical-align:top">${scorecardCellHTML(false)}</td>`).join('')}
+    <td style="border:1px solid #999; padding:3px"></td>
+    <td style="border:1px solid #999; padding:4px 3px; vertical-align:top">
+      <div style="font-size:.82rem; font-weight:600; white-space:nowrap">${i+1}. ${escapeAttr(dispName(p))}</div>
+      <div style="font-size:.62rem; color:#999; white-space:nowrap; margin-top:5px; border-bottom:1px solid #ccc">Sub:</div>
+    </td>
+    ${Array.from({length:SCORECARD_INNINGS},(_,ci)=>`<td style="border:1px solid #999; padding:2px; vertical-align:top; ${inningDividerStyle(ci)}">${scorecardCellHTML()}</td>`).join('')}
     ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
   </tr>`;
-  let html = `<style>@media print{ @page{ size: landscape; margin: 10mm; } }</style>
-  <div style="padding:24px; font-family:'Public Sans',sans-serif; color:#111">
-    <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px; text-align:center; text-transform:uppercase">${escapeAttr(state.teamName||'Team')} Scorecard</h1>
-    <div style="margin-bottom:14px; color:#555; text-align:center">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
-    <table style="width:100%; border-collapse:collapse; font-size:.65rem">
+  let html = `<style>@media print{ @page{ size: portrait; margin: 8mm; } }</style>
+  <div style="padding:14px; font-family:'Public Sans',sans-serif; color:#111">
+    <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px; text-align:center; text-transform:uppercase; font-size:1.3rem">${escapeAttr(state.teamName||'Team')} Scorecard</h1>
+    <div style="margin-bottom:10px; color:#555; text-align:center; font-size:.85rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
+    <table style="width:100%; border-collapse:collapse; font-size:.6rem; table-layout:fixed">
       <thead><tr>
-        <th style="text-align:left; border:1px solid #999; padding:4px; width:22px">Pos</th>
-        <th style="text-align:left; border:1px solid #999; padding:4px; min-width:120px">Player</th>
+        <th style="text-align:left; border:1px solid #999; padding:2px; width:16px">Pos</th>
+        <th style="text-align:left; border:1px solid #999; padding:2px; width:95px">Player</th>
         ${inningHeadHTML}
         ${statHeadHTML}
       </tr></thead>
-      <tbody>${order.map((p,i)=>playerRow(p,i)+subRow()).join('')}</tbody>
+      <tbody>${order.map((p,i)=>playerRow(p,i)).join('')}</tbody>
     </table>
-    <div style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. Prints best in landscape.</div>
+    <div class="noprint" style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. If it still overflows to a second page, set scale to "Fit to page" in the print dialog.</div>
   </div>`;
   sheet.innerHTML = html;
   sheet.style.display='block';
