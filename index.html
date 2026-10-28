@@ -173,7 +173,7 @@ ol.battingorder li.dragging{opacity:.4}
 .appVersion{position:fixed; bottom:6px; right:10px; font-size:.68rem; color:var(--muted); opacity:.65; pointer-events:none; z-index:1}
 .strongbox{accent-color:var(--good)}
 @media print{
-  nav.tabs, header.app, #setupcard, #rulescard, #gamesListCard, #seasonTabBtn, .noprint{display:none !important}
+  nav.tabs, header.app, #setupcard, #rulescard, #gamesListCard, #gameDetailCard, #seasonTabBtn, #appVersionBadge, .noprint{display:none !important}
   body{max-width:none; padding:0}
   .printsheet{display:block !important}
 }
@@ -289,7 +289,7 @@ ol.battingorder li.dragging{opacity:.4}
     <div id="gamesList"></div>
   </div>
 
-  <div class="card">
+  <div class="card noprint">
     <button class="btn" id="genAllBtn" style="width:100%; text-align:center; padding:12px 14px; font-size:.85rem">Generate all draft games</button>
     <details id="scheduleBuilderDetails" style="margin-top:14px">
       <summary class="sub" style="cursor:pointer; font-weight:600">+ Build the schedule</summary>
@@ -377,7 +377,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.037';
+const APP_VERSION = '0.038';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1103,8 +1103,9 @@ function renderGameDetail(){
     if(gridExists) html += `<button class="btn" id="completeBtn">Game complete</button>`;
     html += `<button class="btn ghost" id="cancelBtn">Game cancelled</button>`;
   }
-  html += `<button class="btn ghost" id="printBtn">Open print view</button>
-    <button class="btn ghost" id="scorecardBtn">Open scorecard</button>
+  html += `<button class="btn ghost" id="printLineupBtn">Print lineup</button>
+    <button class="btn ghost" id="printGridBtn">Print fielding grid</button>
+    <button class="btn ghost" id="scorecardBtn">Print scorecard</button>
     <button class="btn ghost" id="deleteGameBtn" style="color:var(--warn); border-color:var(--warn)">Delete game</button></div>`;
 
   card.innerHTML = html;
@@ -1159,7 +1160,8 @@ function wireGameDetail(g){
   const saveScoreBtn = document.getElementById('saveScoreBtn'); if(saveScoreBtn) saveScoreBtn.addEventListener('click',()=>{
     recomputeScore(g); save(); renderGameDetail(); renderGamesList(); renderSeason();
   });
-  document.getElementById('printBtn').addEventListener('click',()=>{ buildPrintSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
+  document.getElementById('printLineupBtn').addEventListener('click',()=>{ buildLineupSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
+  document.getElementById('printGridBtn').addEventListener('click',()=>{ buildGridSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
   document.getElementById('scorecardBtn').addEventListener('click',()=>{ buildScorecardSheet(g); document.querySelector('[data-tab=games]').click(); document.getElementById('printSheet').scrollIntoView(); });
   document.getElementById('deleteGameBtn').addEventListener('click',()=>{
     openConfirm(`Delete the game vs ${g.opponent} (${g.date}) permanently? This can't be undone.`, ()=>{
@@ -1335,7 +1337,7 @@ function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.
 // ---------- Grid rendering & manual swap ----------
 function renderGrid(g){
   const tb = document.querySelector('#gameGrid tbody'); if(!tb) return; tb.innerHTML='';
-  state.players.filter(p=>g.present.includes(p.id)).forEach(p=>{
+  playersInBattingOrder(g).forEach(p=>{
     const tr=document.createElement('tr');
     tr.innerHTML = `<td>${escapeAttr(dispName(p))}</td>` + (g.grid[p.id]||[]).map((code,inn)=>
       `<td class="gridcell ${posClass(code)}" data-pid="${p.id}" data-inn="${inn}">${code}</td>`).join('');
@@ -1420,19 +1422,43 @@ function wireBattingDrag(g, ol){
   ol.addEventListener('pointercancel', endDrag);
 }
 
-// ---------- Print sheet ----------
-function buildPrintSheet(g){
+// ---------- Print sheets (lineup, fielding grid, scorecard -- each its own standalone page) ----------
+// Present players in their actual batting-order sequence, for any printed or on-screen list that
+// should read top-to-bottom the way the lineup card does, not roster order.
+function playersInBattingOrder(g){
+  const present = state.players.filter(p=>g.present.includes(p.id));
+  const idx = {}; (g.order||[]).forEach((id,i)=>{ idx[id]=i; });
+  return present.slice().sort((a,b)=>{
+    const ia = idx[a.id]!==undefined ? idx[a.id] : Infinity;
+    const ib = idx[b.id]!==undefined ? idx[b.id] : Infinity;
+    return ia-ib;
+  });
+}
+// Batting order alone -- big, readable, nothing else on the page.
+function buildLineupSheet(g){
   const sheet = document.getElementById('printSheet');
-  const rows = state.players.filter(p=>g.present.includes(p.id));
-  let html = `<div style="padding:24px; font-family:'Public Sans',sans-serif; color:#111">
+  const order = playersInBattingOrder(g);
+  let html = `<div style="padding:40px; font-family:'Public Sans',sans-serif; color:#111">
+    <h1 style="font-family:'Oswald',sans-serif; margin:0 0 6px; text-align:center">${escapeAttr(state.teamName||'Team')}</h1>
+    <div style="text-align:center; color:#555; margin-bottom:28px; font-size:1.1rem">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
+    <h2 style="font-family:'Oswald',sans-serif; font-size:1.2rem; margin:0 0 14px; text-align:center">Batting Order</h2>
+    <ol style="font-size:1.5rem; line-height:2.2; margin:0 auto; max-width:420px; padding-left:1.3em">${order.map(p=>`<li>${escapeAttr(dispName(p))}</li>`).join('')}</ol>
+    <div style="margin-top:30px; font-size:.78rem; color:#777; text-align:center">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
+  </div>`;
+  sheet.innerHTML = html;
+  sheet.style.display='block';
+}
+// Fielding grid alone, players in batting order -- big, readable, nothing else on the page.
+function buildGridSheet(g){
+  const sheet = document.getElementById('printSheet');
+  const rows = playersInBattingOrder(g);
+  let html = `<div style="padding:28px; font-family:'Public Sans',sans-serif; color:#111">
     <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px">${escapeAttr(state.teamName||'Team')} vs ${escapeAttr(g.opponent)}</h1>
-    <div style="margin-bottom:16px; color:#555">${g.date} — ${g.innings} innings</div>
-    <h2 style="font-family:'Oswald',sans-serif; font-size:1rem; margin:0 0 6px">Batting order</h2>
-    <ol style="margin:0 0 20px 1.2em; padding:0">${g.order.map(id=>{const p=getPlayer(id); return p? `<li>${escapeAttr(dispName(p))}</li>`:'';}).join('')}</ol>
-    <h2 style="font-family:'Oswald',sans-serif; font-size:1rem; margin:0 0 6px">Fielding, inning by inning</h2>
-    <table style="width:100%; border-collapse:collapse; font-size:.85rem">
-      <thead><tr><th style="text-align:left; border-bottom:2px solid #111; padding:4px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border-bottom:2px solid #111; padding:4px">Inn ${i+1}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(p=>`<tr><td style="padding:4px; border-bottom:1px solid #ccc">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map(c=>`<td style="text-align:center; padding:4px; border-bottom:1px solid #ccc; font-family:monospace">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+    <div style="margin-bottom:18px; color:#555">${g.date} — ${g.innings} innings</div>
+    <h2 style="font-family:'Oswald',sans-serif; font-size:1.1rem; margin:0 0 8px">Fielding, inning by inning</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:1rem">
+      <thead><tr><th style="text-align:left; border-bottom:2px solid #111; padding:7px">Player</th>${Array.from({length:g.innings},(_,i)=>`<th style="border-bottom:2px solid #111; padding:7px">Inn ${i+1}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(p=>`<tr><td style="padding:7px; border-bottom:1px solid #ccc; font-size:1.05rem">${escapeAttr(dispName(p))}</td>${(g.grid[p.id]||[]).map(c=>`<td style="text-align:center; padding:7px; border-bottom:1px solid #ccc; font-family:monospace; font-size:1.05rem">${c}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>
     <div style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
   </div>`;
@@ -1440,8 +1466,9 @@ function buildPrintSheet(g){
   sheet.style.display='block';
 }
 
-// How many blank innings to tack on past the scheduled length, for extra-inning games.
-const SCORECARD_EXTRA_INNINGS = 2;
+// Scorecard is always a standard 9-inning sheet, regardless of how many innings this particular
+// game is scheduled for -- matches a real paper scorebook, and covers extra innings for free.
+const SCORECARD_INNINGS = 9;
 // Short perpendicular hash marks along one baseline of the diamond -- the pitch-count tally marks
 // a real scorebook diamond has along each edge. Returns a string of <line> elements.
 function baselineTicks(x1,y1,x2,y2){
@@ -1456,12 +1483,14 @@ function baselineTicks(x1,y1,x2,y2){
 // Diamond icon for the paper scorecard -- home plate at bottom, 1B/2B/3B at the other three
 // corners, an open box at each base to shade in as a runner advances, pitch-count tick marks along
 // each baseline, and a home-plate pentagon below for writing the out/play (K, BB, 6-3, etc).
-// Purely a blank marking surface; nothing here is computed from app data.
-function diamondSVG(){
+// Purely a blank marking surface; nothing here is computed from app data. `small` shrinks it for
+// the rarely-used Sub. rows, which should take up much less vertical space than a starter's row.
+function diamondSVG(small){
   const home=[40,76], first=[76,40], second=[40,4], third=[4,40];
   const ticks = baselineTicks(...home,...first) + baselineTicks(...first,...second)
     + baselineTicks(...second,...third) + baselineTicks(...third,...home);
-  return `<svg viewBox="0 0 80 96" width="50" height="60" style="display:block; margin:0 auto">
+  const w = small? 30 : 50, h = small? 36 : 60;
+  return `<svg viewBox="0 0 80 96" width="${w}" height="${h}" style="display:block; margin:0 auto">
     <polygon points="40,4 76,40 40,76 4,40" fill="none" stroke="#333" stroke-width="1.3"/>
     ${ticks}
     <rect x="68" y="36" width="8" height="8" fill="none" stroke="#333" stroke-width="0.9"/>
@@ -1470,50 +1499,45 @@ function diamondSVG(){
     <polygon points="33,78 47,78 47,85 40,91 33,85" fill="none" stroke="#333" stroke-width="1"/>
   </svg>`;
 }
-function scorecardCellHTML(){
-  return `<div style="display:flex; flex-direction:column; align-items:center">${diamondSVG()}</div>`;
+function scorecardCellHTML(small){
+  return `<div style="display:flex; flex-direction:column; align-items:center">${diamondSVG(small)}</div>`;
 }
 const SCORECARD_STAT_COLS = ['AB','R','H','SB','BB','SO','RBI','E'];
-// A blank, printable paper scorecard pre-filled with this game's actual batting order, starting
-// positions, and inning count -- the "diamond per at-bat" layout coaches know from a store-bought
-// scorebook (USA Softball style), with a blank Sub. row under every starter and a couple of extra
-// innings tacked on past regulation in case the game runs long. For use as a pen-and-paper backup
-// during the live game (this app is explicitly not a live in-game tool).
+// A blank, printable paper scorecard in this game's actual batting order, fixed to a standard
+// 9 innings -- the "diamond per at-bat" layout coaches know from a store-bought scorebook (USA
+// Softball style), with a thin blank Sub. row under every starter. Pos is left blank for the
+// scorer to fill in by hand. For use as a pen-and-paper backup during the live game (this app is
+// explicitly not a live in-game tool).
 function buildScorecardSheet(g){
   const sheet = document.getElementById('printSheet');
-  const order = g.order.map(id=>getPlayer(id)).filter(Boolean);
-  const innings = g.innings;
-  const totalCols = innings + SCORECARD_EXTRA_INNINGS;
-  const inningHeadHTML = Array.from({length:totalCols},(_,i)=>
-    `<th style="border:1px solid #999; padding:3px; width:56px; ${i>=innings?'color:#999; font-style:italic':''}">${i+1}</th>`).join('');
+  const order = playersInBattingOrder(g);
+  const inningHeadHTML = Array.from({length:SCORECARD_INNINGS},(_,i)=>
+    `<th style="border:1px solid #999; padding:3px; width:58px">${i+1}</th>`).join('');
   const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:3px; width:22px">${s}</th>`).join('');
-  const blankRow = (label)=>`<tr>
-    <td style="border:1px solid #999; padding:3px"></td>
-    <td style="border:1px solid #999; padding:4px; color:#999; font-style:italic">${label}</td>
-    ${Array.from({length:totalCols},()=>`<td style="border:1px solid #999; padding:2px; vertical-align:top">${scorecardCellHTML()}</td>`).join('')}
+  const subRow = ()=>`<tr>
+    <td style="border:1px solid #999; padding:1px"></td>
+    <td style="border:1px solid #999; padding:1px 4px; color:#999; font-style:italic; font-size:.78rem">Sub.</td>
+    ${Array.from({length:SCORECARD_INNINGS},()=>`<td style="border:1px solid #999; padding:1px; vertical-align:top">${scorecardCellHTML(true)}</td>`).join('')}
     ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
   </tr>`;
-  const playerRow = (p,i)=>{
-    const startPos = g.grid && g.grid[p.id] ? g.grid[p.id][0] : null;
-    return `<tr>
-      <td style="border:1px solid #999; padding:3px; text-align:center">${startPos||''}</td>
-      <td style="border:1px solid #999; padding:4px">${i+1}. ${escapeAttr(dispName(p))}</td>
-      ${Array.from({length:totalCols},()=>`<td style="border:1px solid #999; padding:2px; vertical-align:top">${scorecardCellHTML()}</td>`).join('')}
-      ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
-    </tr>`;
-  };
+  const playerRow = (p,i)=>`<tr>
+    <td style="border:1px solid #999; padding:4px"></td>
+    <td style="border:1px solid #999; padding:5px; font-size:.95rem; font-weight:600">${i+1}. ${escapeAttr(dispName(p))}</td>
+    ${Array.from({length:SCORECARD_INNINGS},()=>`<td style="border:1px solid #999; padding:2px; vertical-align:top">${scorecardCellHTML(false)}</td>`).join('')}
+    ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
+  </tr>`;
   let html = `<style>@media print{ @page{ size: landscape; margin: 10mm; } }</style>
   <div style="padding:24px; font-family:'Public Sans',sans-serif; color:#111">
     <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px; text-align:center; text-transform:uppercase">${escapeAttr(state.teamName||'Team')} Scorecard</h1>
-    <div style="margin-bottom:14px; color:#555; text-align:center">vs ${escapeAttr(g.opponent)} — ${g.date} — ${innings} innings scheduled (${SCORECARD_EXTRA_INNINGS} extra included below)</div>
+    <div style="margin-bottom:14px; color:#555; text-align:center">vs ${escapeAttr(g.opponent)} — ${g.date}</div>
     <table style="width:100%; border-collapse:collapse; font-size:.65rem">
       <thead><tr>
         <th style="text-align:left; border:1px solid #999; padding:4px; width:22px">Pos</th>
-        <th style="text-align:left; border:1px solid #999; padding:4px; min-width:110px">Player</th>
+        <th style="text-align:left; border:1px solid #999; padding:4px; min-width:120px">Player</th>
         ${inningHeadHTML}
         ${statHeadHTML}
       </tr></thead>
-      <tbody>${order.map((p,i)=>playerRow(p,i)+blankRow('Sub.')).join('')}</tbody>
+      <tbody>${order.map((p,i)=>playerRow(p,i)+subRow()).join('')}</tbody>
     </table>
     <div style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. Prints best in landscape.</div>
   </div>`;
