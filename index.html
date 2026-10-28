@@ -284,11 +284,7 @@ ol.battingorder li.dragging{opacity:.4}
     <div class="row" style="margin-bottom:8px; align-items:center">
       <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingAllEnabled">Bat all players</label>
     </div>
-    <div class="sub" style="margin-bottom:8px">On: every player here today is in the batting lineup. Off: only players who get a spot in the game (a field position or EH) bat; bench-only players don't.</div>
-    <div class="row" style="margin-bottom:8px; align-items:center" id="subsRow">
-      <label class="chip" style="margin-bottom:0"><input type="checkbox" id="battingSubsEnabled">Substitutes take over the batting spot of the player they replace</label>
-    </div>
-    <div class="sub" id="subsNote" style="margin-bottom:8px">Only starters (anyone with a spot in inning 1) are in the lineup. When a player comes out of the field/EH and another goes in, the new player bats in that spot from that inning on. Needs "Bat all players" off. Subs are worked out from the fielding grid and shown on the batting order, lineup page and scorecard.</div>
+    <div class="sub" style="margin-bottom:8px">On: every player here today is in the batting lineup. Off: only players who hold a spot (a field position or EH) bat, and bench players stay on the bench all game. If you move a bench player into the game yourself, they take the batting spot of the player they replace.</div>
     <div class="row" style="margin-bottom:8px; align-items:center" id="ehRow">
       <label class="chip" style="margin-bottom:0"><input type="checkbox" id="ehEnabled">Enable EH (extra hitter) spots</label>
       <label class="sub" id="ehCountWrap">how many <input type="number" id="ehCount" min="1" max="9" style="width:3.2em; margin:0 4px"></label>
@@ -396,7 +392,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.056';
+const APP_VERSION = '0.057';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -429,7 +425,7 @@ function freshProfile(name){
   return {
     teamName: name || 'My Team',
     players: [],
-    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2}, battingForce:false, battingAll:true, battingSubs:false, ehEnabled:false, ehCount:1 },
+    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2}, battingForce:false, battingAll:true, ehEnabled:false, ehCount:1 },
     metricsPrefs: {positions:null, playersPerPos:3},
     scheduleBuilderOpen: true,
     games: [],
@@ -551,7 +547,6 @@ function migrate(){
   if(state.rules.battingShift===undefined) state.rules.battingShift = 1;
   if(state.rules.battingForce===undefined) state.rules.battingForce = false;
   if(state.rules.battingAll===undefined) state.rules.battingAll = true;
-  if(state.rules.battingSubs===undefined) state.rules.battingSubs = false;
   if(state.rules.ehEnabled===undefined) state.rules.ehEnabled = false;
   if(!state.rules.ehCount) state.rules.ehCount = 1;
   state.players.forEach(p=>{ if(p.elig && p.elig.EH===undefined) p.elig.EH = true; });
@@ -745,9 +740,6 @@ function renderRules(){
   document.getElementById('battingGap').value = state.rules.battingStrength.gap;
   document.getElementById('battingForceEnabled').checked = !!state.rules.battingForce;
   document.getElementById('battingAllEnabled').checked = state.rules.battingAll!==false;
-  document.getElementById('battingSubsEnabled').checked = !!state.rules.battingSubs;
-  document.getElementById('battingSubsEnabled').disabled = state.rules.battingAll!==false;
-  document.getElementById('subsRow').style.opacity = state.rules.battingAll!==false ? '.5' : '1';
   document.getElementById('ehEnabled').checked = !!state.rules.ehEnabled;
   document.getElementById('ehEnabled').disabled = state.rules.battingAll!==false;
   document.getElementById('ehCount').value = state.rules.ehCount||1;
@@ -775,7 +767,6 @@ document.getElementById('battingMode').addEventListener('change',e=>{state.rules
 document.getElementById('battingShift').addEventListener('input',e=>{state.rules.battingShift=Math.max(1,+e.target.value||1); save();});
 document.getElementById('battingStrengthEnabled').addEventListener('change',e=>{state.rules.battingStrength.enabled=e.target.checked; save(); renderRules();});
 document.getElementById('battingAllEnabled').addEventListener('change',e=>{state.rules.battingAll=e.target.checked; save(); renderRules(); if(currentGameId) renderGameDetail();});
-document.getElementById('battingSubsEnabled').addEventListener('change',e=>{state.rules.battingSubs=e.target.checked; save(); renderRules(); if(currentGameId) renderGameDetail();});
 document.getElementById('ehEnabled').addEventListener('change',e=>{state.rules.ehEnabled=e.target.checked; save(); renderRules();});
 document.getElementById('ehCount').addEventListener('input',e=>{state.rules.ehCount=Math.max(1,Math.min(9,+e.target.value||1)); save();});
 document.getElementById('battingForceEnabled').addEventListener('change',e=>{state.rules.battingForce=e.target.checked; save();});
@@ -921,7 +912,7 @@ function computeBatterCounts(g){
   const counts = {};
   if(n===0) return counts;
   let cursor = 0;
-  const plan = (state.rules.battingAll===false && state.rules.battingSubs) ? lineupPlan(g) : null;
+  const plan = state.rules.battingAll===false ? lineupPlan(g) : null;
   (g.battersByInning||[]).forEach((c,inn)=>{
     const cnt = c||0;
     for(let i=0;i<cnt;i++){
@@ -1142,15 +1133,16 @@ function slotPlan(n){
   return {positions, eh, bench, slots:[...positions, ...Array.from({length:eh},()=>'EH'), ...Array.from({length:bench},()=>'BN')]};
 }
 // Who is in the batting lineup: everyone present when "Bat all players" is on; otherwise only
-// players who hold a spot (field position or EH) in at least one inning of this game's grid.
+// the starters -- players holding a spot (field position or EH) in inning 1 of this game's grid.
 // Before a grid exists there's nothing to judge by, so everyone present is included.
 function battingPool(g){
   if(state.rules.battingAll!==false) return g.present.slice();
   if(!g.grid || !Object.keys(g.grid).length) return g.present.slice();
-  if(state.rules.battingSubs) return g.present.filter(id=>{ const a=g.grid[id]; return a && a[0] && a[0]!=='BN'; });
-  return g.present.filter(id=>(g.grid[id]||[]).some(c=>c && c!=='BN'));
+  return g.present.filter(id=>{ const a=g.grid[id]; return a && a[0] && a[0]!=='BN'; });
 }
-// Planned substitutions (only when "Bat all players" is off and the substitute rule is on).
+// Substitutions (only when "Bat all players" is off): a player who replaces another takes that
+// player's batting spot -- always, per baseball rules. The generator never plans these (bench
+// players stay benched all game); this only kicks in when a coach moves players in the grid.
 // Starters bat in g.order. Walking inning to inning, anyone who goes from a spot to the bench is
 // replaced by whoever goes from the bench into a spot -- matched by the position being taken over
 // first, then in order -- and the newcomer inherits that batting slot. Returns {slots, events}:
@@ -1159,7 +1151,7 @@ function lineupPlan(g){
   const base = (g.order||[]).filter(id=>battingPool(g).includes(id));
   const nInn = g.innings||0;
   const slots = []; let owners = base.slice(); const events = [];
-  const on = state.rules.battingAll===false && state.rules.battingSubs && g.grid && Object.keys(g.grid).length;
+  const on = state.rules.battingAll===false && g.grid && Object.keys(g.grid).length;
   const ids = on ? Object.keys(g.grid).map(Number) : [];
   const act = (id,i)=>{ const c=(g.grid[id]||[])[i]; return !!c && c!=='BN'; };
   for(let i=0;i<nInn;i++){
@@ -1353,6 +1345,15 @@ function generateGame(g){
   const positions = plan.positions;
   const slotsPerInning = plan.slots;
   const season = countsThrough(g);
+  // Not batting everyone: bench players sit the whole game (nobody comes in mid-game and has to
+  // inherit a batting spot). Who sits rotates by season bench count -- fewest benched sit first.
+  let activePlayers = presentPlayers, solveSlots = slotsPerInning;
+  if(state.rules.battingAll===false && plan.bench>0){
+    const ranked = presentPlayers.map(p=>({p, k:(season[p.id]?.BN||0)+Math.random()*0.5})).sort((a,b)=>a.k-b.k);
+    const benched = new Set(ranked.slice(0, plan.bench).map(x=>x.p.id));
+    activePlayers = presentPlayers.filter(p=>!benched.has(p.id));
+    solveSlots = slotsPerInning.filter(x=>x!=='BN');
+  }
   const grid = {}; presentPlayers.forEach(p=>grid[p.id]=[]);
   const thisGameCount = {}; presentPlayers.forEach(p=>thisGameCount[p.id]={});
   let lastOF = new Set();
@@ -1361,7 +1362,7 @@ function generateGame(g){
 
   for(let inn=0; inn<g.innings; inn++){
     if(inn % block === 0){
-      blockAssignment = solveInning(presentPlayers, positions, slotsPerInning, thisGameCount, lastOF, season);
+      blockAssignment = solveInning(activePlayers, positions, solveSlots, thisGameCount, lastOF, season);
     }
     const assign = blockAssignment;
     const curOF = new Set();
