@@ -377,7 +377,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.041';
+const APP_VERSION = '0.042';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1499,7 +1499,7 @@ function diamondSVG(){
   const home=[40,76], first=[76,40], second=[40,4], third=[4,40];
   const ticks = baselineTicks(...home,...first) + baselineTicks(...first,...second)
     + baselineTicks(...second,...third) + baselineTicks(...third,...home);
-  return `<svg viewBox="0 0 80 96" width="40" height="48" style="display:block; margin:0 auto">
+  return `<svg viewBox="0 0 80 96" width="44" height="53" style="display:block; margin:0 auto">
     <polygon points="40,4 76,40 40,76 4,40" fill="none" stroke="#333" stroke-width="1.3"/>
     ${ticks}
     <rect x="68" y="36" width="8" height="8" fill="none" stroke="#333" stroke-width="0.9"/>
@@ -1522,8 +1522,10 @@ function buildScorecardSheet(g){
   const sheet = document.getElementById('printSheet');
   const order = playersInBattingOrder(g);
   const inningHeadHTML = Array.from({length:SCORECARD_INNINGS},(_,i)=>
-    `<th style="border:1px solid #999; padding:1px; width:38px; white-space:nowrap; ${inningDividerStyle(i)}">${i+1}</th>`).join('');
-  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:1px; width:20px; white-space:nowrap">${s}</th>`).join('');
+    `<th style="border:1px solid #999; padding:1px; width:48px; white-space:nowrap; ${inningDividerStyle(i)}">${i+1}</th>`).join('');
+  // Each stat column (AB, R, H, ...) only ever holds a short hand-written number, so three of
+  // them together take about the same width as one inning's diamond column.
+  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:1px; width:16px; white-space:nowrap">${s}</th>`).join('');
   const playerRow = (p,i)=>`<tr>
     <td style="border:1px solid #999; padding:3px"></td>
     <td style="border:1px solid #999; padding:4px 3px; vertical-align:top">
@@ -1540,7 +1542,7 @@ function buildScorecardSheet(g){
     <table style="width:100%; border-collapse:collapse; font-size:.6rem; table-layout:fixed">
       <thead><tr>
         <th style="text-align:left; border:1px solid #999; padding:2px; width:16px">Pos</th>
-        <th style="text-align:left; border:1px solid #999; padding:2px; width:95px">Player</th>
+        <th style="text-align:left; border:1px solid #999; padding:2px; width:90px">Player</th>
         ${inningHeadHTML}
         ${statHeadHTML}
       </tr></thead>
