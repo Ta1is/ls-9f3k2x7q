@@ -377,7 +377,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.036';
+const APP_VERSION = '0.037';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -1440,46 +1440,82 @@ function buildPrintSheet(g){
   sheet.style.display='block';
 }
 
-// Small diamond icon for the paper scorecard -- home plate at bottom, 1B/2B/3B at the other three
-// corners, with a tiny open square at each base so the scorer can shade it in by hand as a runner
-// advances. Purely a blank marking surface; nothing here is computed from app data.
+// How many blank innings to tack on past the scheduled length, for extra-inning games.
+const SCORECARD_EXTRA_INNINGS = 2;
+// Short perpendicular hash marks along one baseline of the diamond -- the pitch-count tally marks
+// a real scorebook diamond has along each edge. Returns a string of <line> elements.
+function baselineTicks(x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1;
+  const len=Math.sqrt(dx*dx+dy*dy) || 1;
+  const ux=dx/len, uy=dy/len, px=-uy, py=ux, tickLen=3.2;
+  return [0.3,0.5,0.7].map(t=>{
+    const cx=x1+dx*t, cy=y1+dy*t;
+    return `<line x1="${(cx-px*tickLen).toFixed(1)}" y1="${(cy-py*tickLen).toFixed(1)}" x2="${(cx+px*tickLen).toFixed(1)}" y2="${(cy+py*tickLen).toFixed(1)}" stroke="#333" stroke-width="0.7"/>`;
+  }).join('');
+}
+// Diamond icon for the paper scorecard -- home plate at bottom, 1B/2B/3B at the other three
+// corners, an open box at each base to shade in as a runner advances, pitch-count tick marks along
+// each baseline, and a home-plate pentagon below for writing the out/play (K, BB, 6-3, etc).
+// Purely a blank marking surface; nothing here is computed from app data.
 function diamondSVG(){
-  return `<svg viewBox="0 0 60 60" width="40" height="40" style="display:block; margin:0 auto">
-    <polygon points="30,4 56,30 30,56 4,30" fill="none" stroke="#333" stroke-width="1.3"/>
-    <rect x="47" y="23" width="7" height="7" fill="none" stroke="#333" stroke-width="1"/>
-    <rect x="23" y="1" width="7" height="7" fill="none" stroke="#333" stroke-width="1"/>
-    <rect x="6" y="23" width="7" height="7" fill="none" stroke="#333" stroke-width="1"/>
+  const home=[40,76], first=[76,40], second=[40,4], third=[4,40];
+  const ticks = baselineTicks(...home,...first) + baselineTicks(...first,...second)
+    + baselineTicks(...second,...third) + baselineTicks(...third,...home);
+  return `<svg viewBox="0 0 80 96" width="50" height="60" style="display:block; margin:0 auto">
+    <polygon points="40,4 76,40 40,76 4,40" fill="none" stroke="#333" stroke-width="1.3"/>
+    ${ticks}
+    <rect x="68" y="36" width="8" height="8" fill="none" stroke="#333" stroke-width="0.9"/>
+    <rect x="36" y="0" width="8" height="8" fill="none" stroke="#333" stroke-width="0.9"/>
+    <rect x="0" y="36" width="8" height="8" fill="none" stroke="#333" stroke-width="0.9"/>
+    <polygon points="33,78 47,78 47,85 40,91 33,85" fill="none" stroke="#333" stroke-width="1"/>
   </svg>`;
 }
 function scorecardCellHTML(){
-  return `<div style="display:flex; flex-direction:column; align-items:center; gap:3px">
-    ${diamondSVG()}
-    <div style="width:92%; height:12px; border-bottom:1px solid #aaa"></div>
-  </div>`;
+  return `<div style="display:flex; flex-direction:column; align-items:center">${diamondSVG()}</div>`;
 }
-// A blank, printable paper scorecard pre-filled with this game's actual batting order and inning
-// count -- the "diamond per at-bat" layout coaches know from a store-bought scorebook, for use as
-// a pen-and-paper backup during the live game (this app is explicitly not a live in-game tool).
+const SCORECARD_STAT_COLS = ['AB','R','H','SB','BB','SO','RBI','E'];
+// A blank, printable paper scorecard pre-filled with this game's actual batting order, starting
+// positions, and inning count -- the "diamond per at-bat" layout coaches know from a store-bought
+// scorebook (USA Softball style), with a blank Sub. row under every starter and a couple of extra
+// innings tacked on past regulation in case the game runs long. For use as a pen-and-paper backup
+// during the live game (this app is explicitly not a live in-game tool).
 function buildScorecardSheet(g){
   const sheet = document.getElementById('printSheet');
   const order = g.order.map(id=>getPlayer(id)).filter(Boolean);
   const innings = g.innings;
-  let html = `<div style="padding:24px; font-family:'Public Sans',sans-serif; color:#111">
-    <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px">${escapeAttr(state.teamName||'Team')} vs ${escapeAttr(g.opponent)}</h1>
-    <div style="margin-bottom:16px; color:#555">${g.date} — ${innings} innings — blank scorecard, fill in by hand during the game</div>
-    <table style="width:100%; border-collapse:collapse; font-size:.7rem">
+  const totalCols = innings + SCORECARD_EXTRA_INNINGS;
+  const inningHeadHTML = Array.from({length:totalCols},(_,i)=>
+    `<th style="border:1px solid #999; padding:3px; width:56px; ${i>=innings?'color:#999; font-style:italic':''}">${i+1}</th>`).join('');
+  const statHeadHTML = SCORECARD_STAT_COLS.map(s=>`<th style="border:1px solid #999; padding:3px; width:22px">${s}</th>`).join('');
+  const blankRow = (label)=>`<tr>
+    <td style="border:1px solid #999; padding:3px"></td>
+    <td style="border:1px solid #999; padding:4px; color:#999; font-style:italic">${label}</td>
+    ${Array.from({length:totalCols},()=>`<td style="border:1px solid #999; padding:2px; vertical-align:top">${scorecardCellHTML()}</td>`).join('')}
+    ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
+  </tr>`;
+  const playerRow = (p,i)=>{
+    const startPos = g.grid && g.grid[p.id] ? g.grid[p.id][0] : null;
+    return `<tr>
+      <td style="border:1px solid #999; padding:3px; text-align:center">${startPos||''}</td>
+      <td style="border:1px solid #999; padding:4px">${i+1}. ${escapeAttr(dispName(p))}</td>
+      ${Array.from({length:totalCols},()=>`<td style="border:1px solid #999; padding:2px; vertical-align:top">${scorecardCellHTML()}</td>`).join('')}
+      ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
+    </tr>`;
+  };
+  let html = `<style>@media print{ @page{ size: landscape; margin: 10mm; } }</style>
+  <div style="padding:24px; font-family:'Public Sans',sans-serif; color:#111">
+    <h1 style="font-family:'Oswald',sans-serif; margin:0 0 4px; text-align:center; text-transform:uppercase">${escapeAttr(state.teamName||'Team')} Scorecard</h1>
+    <div style="margin-bottom:14px; color:#555; text-align:center">vs ${escapeAttr(g.opponent)} — ${g.date} — ${innings} innings scheduled (${SCORECARD_EXTRA_INNINGS} extra included below)</div>
+    <table style="width:100%; border-collapse:collapse; font-size:.65rem">
       <thead><tr>
-        <th style="text-align:left; border:1px solid #999; padding:4px; width:22px">#</th>
-        <th style="text-align:left; border:1px solid #999; padding:4px; min-width:100px">Player</th>
-        ${Array.from({length:innings},(_,i)=>`<th style="border:1px solid #999; padding:3px; width:50px">${i+1}</th>`).join('')}
+        <th style="text-align:left; border:1px solid #999; padding:4px; width:22px">Pos</th>
+        <th style="text-align:left; border:1px solid #999; padding:4px; min-width:110px">Player</th>
+        ${inningHeadHTML}
+        ${statHeadHTML}
       </tr></thead>
-      <tbody>${order.map((p,i)=>`<tr>
-        <td style="border:1px solid #999; padding:4px; text-align:center">${i+1}</td>
-        <td style="border:1px solid #999; padding:4px">${escapeAttr(dispName(p))}</td>
-        ${Array.from({length:innings},()=>`<td style="border:1px solid #999; padding:3px; vertical-align:top">${scorecardCellHTML()}</td>`).join('')}
-      </tr>`).join('')}</tbody>
+      <tbody>${order.map((p,i)=>playerRow(p,i)+blankRow('Sub.')).join('')}</tbody>
     </table>
-    <div style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF.</div>
+    <div style="margin-top:18px; font-size:.78rem; color:#777">Use your browser's Print (Ctrl/Cmd+P) from this page to print or save as PDF. Prints best in landscape.</div>
   </div>`;
   sheet.innerHTML = html;
   sheet.style.display='block';
