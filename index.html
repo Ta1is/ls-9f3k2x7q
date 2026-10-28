@@ -243,7 +243,19 @@ ol.battingorder li.dragging{opacity:.4}
       <div class="sub" style="margin-bottom:8px">Puts a Strong-rated player on each side of the field. Infield sides (SS+3B / 2B+1B) are checked no matter which outfield detail mode you're using; the outfield sides (LF+LC / RC+RF) only apply once Outfield detail is set to Specific.</div>
       <label class="chip" style="margin-bottom:14px"><input type="checkbox" id="wallSides">Enforce the wall</label>
 
-      <h3 style="margin-bottom:6px">Keep players apart — wall</h3>
+      <div id="lineRulesBlock" style="display:none">
+        <h3 style="margin-bottom:6px">Line — front-to-back pairs</h3>
+        <div class="sub" style="margin-bottom:8px">Checks the spot directly behind each infielder: SS/LC, 3B/LF, 2B/RC, 1B/RF. Flags it when both players in a pair are rated Weak. Only applies with Outfield detail set to Specific.</div>
+        <label class="chip" style="margin-bottom:14px"><input type="checkbox" id="lineWeak">Avoid two Weak fielders in the same line</label>
+
+        <h3 style="margin-bottom:6px">Keep players apart — line</h3>
+        <div class="sub" style="margin-bottom:8px">Separate from ratings — pick specific players who should never end up in one of those same front-to-back pairs together, no matter how they're rated.</div>
+        <label class="chip" style="margin-bottom:8px"><input type="checkbox" id="lineExclusionEnabled">Enable</label>
+        <div id="lineGroups"></div>
+        <button class="btn ghost small" id="addLineGroupBtn">+ Add group to keep apart</button>
+      </div>
+
+      <h3 style="margin-bottom:6px; margin-top:16px">Keep players apart — wall</h3>
       <div class="sub" style="margin-bottom:8px">Pick specific players who should never share a side of the field together (left or right, infield or outfield) — for any reason you choose, not just ratings.</div>
       <label class="chip" style="margin-bottom:8px"><input type="checkbox" id="wallExclusionEnabled">Enable</label>
       <div id="wallGroups"></div>
@@ -367,7 +379,7 @@ ol.battingorder li.dragging{opacity:.4}
 "use strict";
 // Bump this one line each time this file is published — shown bottom-right as a quick "did my
 // last change actually land" check.
-const APP_VERSION = '0.044';
+const APP_VERSION = '0.045';
 const CATS_GENERIC = ['P','C','1B','2B','3B','SS','OF'];
 // Specific mode exposes every real outfield slot. Which ones a given game actually uses is decided
 // by headcount (fieldPositionsFor/ofLabels): 8 present -> LC/RC, 9 -> LF/CF/RF, 10+ -> LF/LC/RC/RF.
@@ -383,6 +395,11 @@ const RIGHT_IF = ['1B','2B'];
 // whichever single slot on that side exists, same fallback as the infield wall.
 const LEFT_OF = ['LF','LC'];
 const RIGHT_OF = ['RC','RF'];
+// Line = front-to-back: the outfield slot directly behind each infielder. Only meaningful once
+// Outfield detail is set to Specific (Generic has no LF/LC/RC/RF slots to pair against). When both
+// specific slots exist (4-OF alignment) they're distinct (SS-LC, 3B-LF); when only one exists
+// (2-OF or 3-OF), both infielders share it, matching how the two sides collapse.
+const LINE_PAIRS = [['SS','LC','LF'],['3B','LF','LC'],['2B','RC','RF'],['1B','RF','RC']];
 const IF = new Set(['1B','2B','3B','SS']);
 const LS_KEY = 'lineupstudio_v2';
 function activeCats(){ return state.rules.ofDetail==='specific'? CATS_SPECIFIC : CATS_GENERIC; }
@@ -395,7 +412,7 @@ function freshProfile(name){
   return {
     teamName: name || 'My Team',
     players: [],
-    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2} },
+    rules: { repeatCap:2, banOF:true, blockSize:1, ofDetail:'generic', wallSides:false, lineWeak:false, lineExclusion:{enabled:false, groups:[]}, wallExclusion:{enabled:false, groups:[]}, battingMode:'fixed', battingShift:1, battingStrength:{enabled:true, gap:2} },
     metricsPrefs: {positions:null, playersPerPos:3},
     scheduleBuilderOpen: true,
     games: [],
@@ -504,6 +521,9 @@ function openConfirm(message, onConfirm, yesLabel){
 function migrate(){
   state.rules.ofDetail = state.rules.ofDetail || 'generic';
   if(state.rules.wallSides===undefined) state.rules.wallSides = !!state.rules.wallPairs;
+  if(state.rules.lineWeak===undefined) state.rules.lineWeak = false;
+  state.rules.lineExclusion = state.rules.lineExclusion || {enabled:false, groups:[]};
+  state.rules.lineExclusion.groups = (state.rules.lineExclusion.groups||[]).map(g=> Array.isArray(g) ? {pids:g, reason:''} : g);
   state.rules.wallExclusion = state.rules.wallExclusion || {enabled:false, groups:[]};
   state.rules.wallExclusion.groups = (state.rules.wallExclusion.groups||[]).map(g=> Array.isArray(g) ? {pids:g, reason:''} : g);
   if(!state.metricsPrefs) state.metricsPrefs = {positions:null, playersPerPos:3};
@@ -681,7 +701,10 @@ function renderRules(){
   document.getElementById('blockSize').value = state.rules.blockSize;
   document.getElementById('ofDetail').value = state.rules.ofDetail;
   document.getElementById('wallSides').checked = state.rules.wallSides;
+  document.getElementById('lineWeak').checked = state.rules.lineWeak;
+  document.getElementById('lineExclusionEnabled').checked = state.rules.lineExclusion.enabled;
   document.getElementById('wallExclusionEnabled').checked = state.rules.wallExclusion.enabled;
+  document.getElementById('lineRulesBlock').style.display = state.rules.ofDetail==='specific' ? 'block' : 'none';
   document.getElementById('battingMode').value = state.rules.battingMode;
   document.getElementById('battingShift').value = state.rules.battingShift;
   document.getElementById('battingShiftWrap').style.display = state.rules.battingMode==='rotate' ? 'inline-flex' : 'none';
@@ -689,6 +712,7 @@ function renderRules(){
   document.getElementById('battingGap').value = state.rules.battingStrength.gap;
   document.getElementById('battingGapWrap').style.display = state.rules.battingStrength.enabled ? 'inline-flex' : 'none';
 
+  renderLineGroups();
   renderWallGroups();
 }
 document.getElementById('repeatCap').addEventListener('input',e=>{state.rules.repeatCap=+e.target.value||2; save();});
@@ -698,7 +722,12 @@ document.getElementById('ofDetail').addEventListener('change',e=>{
   state.rules.ofDetail = e.target.value; save(); renderRoster(); renderRules(); renderSeason();
 });
 document.getElementById('wallSides').addEventListener('change',e=>{state.rules.wallSides=e.target.checked; save();});
+document.getElementById('lineWeak').addEventListener('change',e=>{state.rules.lineWeak=e.target.checked; save();});
+document.getElementById('lineExclusionEnabled').addEventListener('change',e=>{state.rules.lineExclusion.enabled=e.target.checked; save();});
 document.getElementById('wallExclusionEnabled').addEventListener('change',e=>{state.rules.wallExclusion.enabled=e.target.checked; save();});
+document.getElementById('addLineGroupBtn').addEventListener('click',()=>{
+  state.rules.lineExclusion.groups.push({pids:[], reason:''}); save(); renderLineGroups();
+});
 document.getElementById('battingMode').addEventListener('change',e=>{state.rules.battingMode=e.target.value; save(); renderRules();});
 document.getElementById('battingShift').addEventListener('input',e=>{state.rules.battingShift=Math.max(1,+e.target.value||1); save();});
 document.getElementById('battingStrengthEnabled').addEventListener('change',e=>{state.rules.battingStrength.enabled=e.target.checked; save(); renderRules();});
@@ -728,6 +757,9 @@ function renderExclusionGroups(containerId, groups, labelSuffix, onChange){
   el.querySelectorAll('.groupReason').forEach(inp=>inp.addEventListener('input',e=>{
     groups[+e.target.dataset.gi].reason = e.target.value; save();
   }));
+}
+function renderLineGroups(){
+  renderExclusionGroups('lineGroups', state.rules.lineExclusion.groups, 'never share a line pair', renderLineGroups);
 }
 document.getElementById('addWallGroupBtn').addEventListener('click',()=>{
   state.rules.wallExclusion.groups.push({pids:[], reason:''}); save(); renderWallGroups();
@@ -1236,7 +1268,8 @@ function costOf(p, slot, thisGameCount, lastOF, season, relax){
 }
 function ratingOf(p, cat){ return (p && p.rating && p.rating[cat]) || 'average'; }
 function pairPenalties(assign, slotsThisInning){
-  if(!state.rules.wallSides && !state.rules.wallExclusion.enabled) return 0;
+  const lineOn = state.rules.ofDetail==='specific' && (state.rules.lineWeak || state.rules.lineExclusion.enabled);
+  if(!state.rules.wallSides && !state.rules.wallExclusion.enabled && !lineOn) return 0;
   let penalty = 0;
   function pidAt(slot){ for(const [pid,s] of Object.entries(assign)) if(s===slot) return +pid; return null; }
 
@@ -1265,6 +1298,25 @@ function pairPenalties(assign, slotsThisInning){
         return ratingOf(p,pos)==='strong';
       });
       if(!hasStrong) penalty += 30;
+    });
+  }
+
+  // Line: front-to-back infield/outfield pairs (Specific outfield only) — flag two Weaks together,
+  // or named players together.
+  if(lineOn){
+    LINE_PAIRS.forEach(([posA, pref, fallback])=>{
+      const ofSlot = slotsThisInning.includes(pref) ? pref : (slotsThisInning.includes(fallback) ? fallback : null);
+      if(!ofSlot) return;
+      const pidA = pidAt(posA), pidB = pidAt(ofSlot);
+      if(pidA==null || pidB==null || pidA===pidB) return;
+      const pA = state.players.find(x=>x.id===pidA), pB = state.players.find(x=>x.id===pidB);
+      if(!pA || !pB) return;
+      if(state.rules.lineWeak && ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') penalty += 40;
+      if(state.rules.lineExclusion.enabled){
+        (state.rules.lineExclusion.groups||[]).forEach(group=>{
+          if(group.pids.includes(pidA) && group.pids.includes(pidB)) penalty += 4000;
+        });
+      }
     });
   }
 
@@ -1429,32 +1481,16 @@ function buildGridSheet(g){
 // Scorecard is always a standard 9-inning sheet, regardless of how many innings this particular
 // game is scheduled for -- matches a real paper scorebook, and covers extra innings for free.
 const SCORECARD_INNINGS = 9;
-// Short perpendicular hash marks along one baseline of the diamond -- the pitch-count tally marks
-// a real scorebook diamond has along each edge. Returns a string of <line> elements.
-function baselineTicks(x1,y1,x2,y2){
-  const dx=x2-x1, dy=y2-y1;
-  const len=Math.sqrt(dx*dx+dy*dy) || 1;
-  const ux=dx/len, uy=dy/len, px=-uy, py=ux, tickLen=3.2;
-  return [0.3,0.5,0.7].map(t=>{
-    const cx=x1+dx*t, cy=y1+dy*t;
-    return `<line x1="${(cx-px*tickLen).toFixed(1)}" y1="${(cy-py*tickLen).toFixed(1)}" x2="${(cx+px*tickLen).toFixed(1)}" y2="${(cy+py*tickLen).toFixed(1)}" stroke="#333" stroke-width="0.7"/>`;
-  }).join('');
-}
-// Diamond icon for the paper scorecard -- home plate at bottom, 1B/2B/3B at the other three
-// corners, an open box at each base to shade in as a runner advances, pitch-count tick marks along
-// each baseline, and a home-plate pentagon below for writing the out/play (K, BB, 6-3, etc).
-// Purely a blank marking surface; nothing here is computed from app data. One diamond covers the
-// whole batting-order slot for that inning, starter or sub alike -- if a sub comes in, the coach
-// just writes the new name in over/under the starter's (see the Sub: line on the player cell).
+// Plain diamond icon for the paper scorecard -- home at bottom, 1B at the right, 2B at top, 3B at
+// the left, filling its box corner-to-corner (home touches the bottom edge, 3B touches the left
+// edge), with a shallow arch over the top marking the outfield from 3B to 1B. Purely a blank
+// marking surface; nothing here is computed from app data. One diamond covers the whole
+// batting-order slot for that inning, starter or sub alike -- if a sub comes in, the coach just
+// writes the new name in over/under the starter's (see the Sub: line on the player cell).
 function diamondSVG(){
-  const home=[40,76], first=[76,40], second=[40,4], third=[4,40];
-  const ticks = baselineTicks(...home,...first) + baselineTicks(...first,...second)
-    + baselineTicks(...second,...third) + baselineTicks(...third,...home);
-  return `<svg viewBox="0 0 80 96" width="42" height="50" style="display:block; flex-shrink:0">
-    <path d="M14,20 Q40,1 66,20" fill="none" stroke="#333" stroke-width="0.8"/>
-    <polygon points="40,4 76,40 40,76 4,40" fill="none" stroke="#333" stroke-width="1.3"/>
-    ${ticks}
-    <polygon points="33,78 47,78 47,85 40,91 33,85" fill="none" stroke="#333" stroke-width="1"/>
+  return `<svg viewBox="0 -16 80 96" width="46" height="55" style="display:block; flex-shrink:0">
+    <path d="M0,40 Q40,-16 80,40" fill="none" stroke="#333" stroke-width="0.8"/>
+    <polygon points="40,0 80,40 40,80 0,40" fill="none" stroke="#333" stroke-width="1.3"/>
   </svg>`;
 }
 // Small circle-the-outcome list along the right side of each diamond -- common shorthand on
@@ -1466,7 +1502,7 @@ function outcomeListHTML(){
 // The diamond sits at the bottom of its box (home plate's point touches the bottom edge), with
 // the circle-list riding along its right side at the same baseline.
 function scorecardCellHTML(){
-  return `<div style="display:flex; align-items:flex-end; justify-content:center; gap:2px; height:100%">${diamondSVG()}${outcomeListHTML()}</div>`;
+  return `<div style="display:flex; align-items:flex-end; justify-content:space-between; gap:2px; height:100%">${diamondSVG()}${outcomeListHTML()}</div>`;
 }
 const SCORECARD_STAT_COLS = ['AB','R','H','SB','BB','SO','RBI','E'];
 // A blank, printable paper scorecard in this game's actual batting order, fixed to a standard
@@ -1489,7 +1525,7 @@ function buildScorecardSheet(g){
       <div style="font-size:.82rem; font-weight:600; white-space:nowrap">${i+1}. ${escapeAttr(dispName(p))}</div>
       <div style="font-size:.56rem; font-style:italic; color:#999; white-space:nowrap; margin-top:7px; padding-top:2px; border-top:1px dotted #ccc">Sub: <span style="display:inline-block; width:60%; border-bottom:1px solid #ccc">&nbsp;</span></div>
     </td>
-    ${Array.from({length:SCORECARD_INNINGS},(_,ci)=>`<td style="border:1px solid #999; padding:2px 2px 0 2px; vertical-align:top; ${inningDividerStyle(ci)}">${scorecardCellHTML()}</td>`).join('')}
+    ${Array.from({length:SCORECARD_INNINGS},(_,ci)=>`<td style="border:1px solid #999; padding:2px 2px 0 0; vertical-align:top; ${inningDividerStyle(ci)}">${scorecardCellHTML()}</td>`).join('')}
     ${SCORECARD_STAT_COLS.map(()=>`<td style="border:1px solid #999"></td>`).join('')}
   </tr>`;
   let html = `<style>@media print{ @page{ size: portrait; margin: 8mm; } }</style>
@@ -1582,7 +1618,7 @@ function battingOrderWorks(g){
 // Same walk as fieldingWorks, but tallies every violation instead of stopping at the first one —
 // used by the Metrics tab's rule-friction log, not by the generator itself.
 function countViolations(g){
-  const counts = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, keepApartWall:0};
+  const counts = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0, keepApartWall:0};
   const presentPlayers = state.players.filter(p=>g.present.includes(p.id));
   if(presentPlayers.length===0 || Object.keys(g.grid).length!==presentPlayers.length) return counts;
   const positions = fieldPositionsFor(presentPlayers.length);
@@ -1622,6 +1658,22 @@ function countViolations(g){
           return pid && ratingOf(getPlayer(+pid), pos)==='strong';
         });
         if(!hasStrong) counts.wallOF++;
+      }
+    }
+    if(state.rules.ofDetail==='specific'){
+      for(const [posA, pref, fallback] of LINE_PAIRS){
+        const ofSlot = slots.includes(pref) ? pref : (slots.includes(fallback) ? fallback : null);
+        if(!ofSlot) continue;
+        const pidA = Object.keys(assignBySlot).find(k=>assignBySlot[k]===posA);
+        const pidB = Object.keys(assignBySlot).find(k=>assignBySlot[k]===ofSlot);
+        if(!pidA || !pidB || pidA===pidB) continue;
+        const pA=getPlayer(+pidA), pB=getPlayer(+pidB);
+        if(state.rules.lineWeak && ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') counts.line++;
+        if(state.rules.lineExclusion.enabled){
+          for(const group of (state.rules.lineExclusion.groups||[])){
+            if(group.pids.includes(+pidA) && group.pids.includes(+pidB)) counts.keepApart++;
+          }
+        }
       }
     }
     if(state.rules.wallExclusion.enabled){
@@ -1696,13 +1748,13 @@ function renderMetrics(){
 
   const locked = state.games.filter(g=>g.locked && !g.cancelled);
   const lockedSorted = locked.slice().sort(cmpGames);
-  const agg = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, keepApartWall:0};
+  const agg = {eligibility:0, repeatCap:0, ofBackToBack:0, wall:0, wallOF:0, line:0, keepApart:0, keepApartWall:0};
   const lastGameFor = {}; Object.keys(agg).forEach(k=>lastGameFor[k]=null);
   lockedSorted.forEach(g=>{
     const c = countViolations(g);
     Object.keys(agg).forEach(k=>{ agg[k]+=c[k]; if(c[k]>0) lastGameFor[k]=g; });
   });
-  const labels = {eligibility:'Played a position they were marked never for', repeatCap:'Over the repeat-position cap', ofBackToBack:'Outfield two innings in a row', wall:'Wall side with no Strong fielder', wallOF:'Outfield wall side with no Strong fielder', keepApartWall:'Kept-apart players shared a wall side'};
+  const labels = {eligibility:'Played a position they were marked never for', repeatCap:'Over the repeat-position cap', ofBackToBack:'Outfield two innings in a row', wall:'Wall side with no Strong fielder', wallOF:'Outfield wall side with no Strong fielder', line:'Two Weak fielders in one line', keepApart:'Kept-apart players shared a line', keepApartWall:'Kept-apart players shared a wall side'};
   const frictionEl = document.getElementById('frictionList');
   frictionEl.innerHTML = locked.length
     ? Object.entries(agg).map(([k,v])=>{
@@ -1854,6 +1906,22 @@ function fieldingWorks(g){
             return pid && ratingOf(getPlayer(+pid), pos)==='strong';
           });
           if(!hasStrong) return false;
+        }
+      }
+    }
+    if(state.rules.ofDetail==='specific' && (state.rules.lineWeak || state.rules.lineExclusion.enabled)){
+      for(const [posA, pref, fallback] of LINE_PAIRS){
+        const ofSlot = slots.includes(pref) ? pref : (slots.includes(fallback) ? fallback : null);
+        if(!ofSlot) continue;
+        const pidA = Object.keys(assignBySlot).find(k=>assignBySlot[k]===posA);
+        const pidB = Object.keys(assignBySlot).find(k=>assignBySlot[k]===ofSlot);
+        if(!pidA || !pidB || pidA===pidB) continue;
+        const pA=getPlayer(+pidA), pB=getPlayer(+pidB);
+        if(state.rules.lineWeak && ratingOf(pA,posA)==='weak' && ratingOf(pB,ofSlot)==='weak') return false;
+        if(state.rules.lineExclusion.enabled){
+          for(const group of (state.rules.lineExclusion.groups||[])){
+            if(group.pids.includes(+pidA) && group.pids.includes(+pidB)) return false;
+          }
         }
       }
     }
